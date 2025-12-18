@@ -4,7 +4,6 @@ import numpy as np
 class ReplayBuffer:
     """
     Experience replay buffer.
-    HER logic will be added here later.
     """
 
     def __init__(self, capacity: int, state_dim: int, action_dim: int):
