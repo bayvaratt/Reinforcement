@@ -2,25 +2,6 @@ import numpy as np
 
 
 class OUNoise:
-    """
-    Ornstein–Uhlenbeck process for exploration noise.
-
-    Used to generate temporally correlated noise for continuous action spaces.
-
-    Parameters
-    ----------
-    action_dim : int
-        Dimensionality of the action space.
-    mu : float, optional
-        Long-running mean (recommended 0.0).
-    theta : float, optional
-        Speed of mean reversion (recommended 0.15).
-    sigma : float, optional
-        Volatility parameter (recommended 0.2).
-    dt : float, optional
-        Time step for discretisation (recommended 1e-2).
-    """
-
     def __init__(self, action_dim: int, mu: float = 0.0, theta: float = 0.15, sigma: float = 0.2, dt: float = 1e-2) -> None:
         """
         Initialise the OU noise process.
@@ -50,7 +31,7 @@ class OUNoise:
         Corrected OU sampling step.
         """
 
-        dx = self.theta * (self.mu - self.state) * self.dt + self.sigma * np.sqrt(self.dt) * np.random.randn(self.action_dim)
+        dx = self.theta * (self.mu - self.state) * self.dt + self.sigma * np.sqrt(self.dt) * np.random.randn(self.action_dim) #Derived from equation: dxt = theta*(mu - x_t)*d_t + sigma*dW_t
         
         self.state = self.state + dx
         return self.state # May need to clip externally based on action bounds
