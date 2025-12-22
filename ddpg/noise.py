@@ -31,8 +31,8 @@ class OUNoise:
         Corrected OU sampling step.
         """
 
-        dx = self.theta * (self.mu - self.state) * self.dt + self.sigma * np.sqrt(self.dt) * np.random.randn(self.action_dim) #Derived from equation: dxt = theta*(mu - x_t)*d_t + sigma*dW_t
+        dx = self.theta * (self.mu - self.state) * self.dt + self.sigma * np.sqrt(self.dt) * np.random.randn(self.action_dim) #Derived from equation: dx_t = theta*(mu - x_t)*d_t + sigma*dW_t
         
         self.state = self.state + dx
-        return self.state # May need to clip externally based on action bounds
+        return self.state # May need to clip externally based on action bounds (np.clip(self.state, action_low, action_high))
 

@@ -17,7 +17,7 @@ class Critic(nn.Module):
         self.ln1 = nn.LayerNorm(hidden_dim)
 
         #(2)
-        self.fc2 = nn.Linear(hidden_dim + action_dim, hidden_dim) # Second layer processes state features, action concatenated
+        self.fc2 = nn.Linear(hidden_dim + action_dim, hidden_dim) # Second layer processes state features, action dimension concatenated
         self.ln2 = nn.LayerNorm(hidden_dim)
 
         #(3)
@@ -26,13 +26,6 @@ class Critic(nn.Module):
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         """
         Forward pass through the critic network.
-
-        Args:
-            state: Tensor of shape (batch_size, state_dim)
-            action: Tensor of shape (batch_size, action_dim)
-
-        Returns:
-            q_value: Tensor of shape (batch_size, 1)
         """
 
         x = F.relu(self.ln1(self.fc1(state))) #(1)
