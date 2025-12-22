@@ -18,6 +18,8 @@ This project implements a state-of-the-art reinforcement learning agent using DD
 
 - **Input**: Current state (including goal information) as a tensor of shape `(batch_size, state_dim)`
 
+- **Forward Method**: `forward(self, state: torch.Tensor) -> torch.Tensor`
+
 - **Architecture**:
 
 - State → 400 hidden units (Layer 1)
@@ -55,6 +57,8 @@ This project implements a state-of-the-art reinforcement learning agent using DD
 **How It Works**:
 
 - **Input**: State tensor `(batch_size, state_dim)` and action tensor `(batch_size, action_dim)`
+
+- **Forward Method**: `forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor`
 
 - **Architecture**:
 
@@ -130,9 +134,17 @@ This project implements a state-of-the-art reinforcement learning agent using DD
 
 6.  **Optimisers**: Adam optimisers (1e-4 for actor, 1e-3 for critic)
 
-**Key Methods**:
+**Constructor Parameters**:
 
-#### `select_action(state, noise=True)`
+- `state_dim`: Input dimensionality (state + goal)
+- `action_dim`: Output action dimensionality
+- `max_action`: Maximum action value for scaling
+- `discount_factor`: Reward discount factor (default 0.99, stored as `self.discount_factor`)
+- `soft_update_factor`: Target network update rate (default 0.005, stored as `self.soft_update_factor`)
+- `device`: PyTorch device for computations
+
+**Key Methods**:
+) -> None:
 
 - **Input**: Current state observation
 
@@ -152,7 +164,7 @@ This project implements a state-of-the-art reinforcement learning agent using DD
 
 - **Usage**: Called during training (with noise) and evaluation (without noise)
 
-#### `getSampleBatch(her_replay_buffer, batch_size)`
+#### `get_sample_batch(her_replay_buffer, batch_size)`
 
 - **Purpose**: Extract and prepare a training batch
 
@@ -186,7 +198,7 @@ Q_target = r + γ(1 - done) · Q'(s', μ'(s'))
 
 - Use target critic to estimate: `Q'(s', μ'(s'))`
 
-- Apply Bellman equation with discount γ
+- Apply Bellman equation with discount `discount_factor` (γ)
 
 - Multiply by (1 - done) to zero out terminal states
 
@@ -221,64 +233,19 @@ Q_target = r + γ(1 - done) · Q'(s', μ'(s'))
 
 - Slowly blend current networks into targets
 
-- τ = 0.005 (only 0.5% update per step)
+- `soft_update_factor` (τ) = 0.005 (only 0.5% update per step)
 
 - **Goal**: Stable learning targets without oscillation
 
-#### `_soft_update(source_net, target_net)`
+#### `softUpdate(source_net, target_net)`
 
 - **Purpose**: Polyak averaging for stable target networks
 
-- **Process**: For each parameter, update target = τ·source + (1-τ)·target
+- **Process**: For each parameter, update target = `soft_update_factor`·source + (1-`soft_update_factor`)·target
 
 - **Why**: Prevents targets from changing too rapidly, which would destabilise training
 
 ---
-
-### . **Trainer** (`ddpg/trainer.py`)
-
-**Conceptual Role**: Training loop orchestration.
-
-**Status**: Currently stub (needs implementation)
-
-**Expected Functionality**:
-
-- **Episode Loop**: Iterate through training episodes
-
-- **Step Loop**: Interact with environment within each episode
-
-- **Data Collection**: Store transitions in replay buffer
-
-- **Training Trigger**: Call agent.train() when buffer has enough samples
-
-- **Logging**: Track rewards, losses, Q-values, etc.
-
-- **Evaluation**: Periodic evaluation without exploration noise
-
-**Typical Training Flow**:
-ADD IT HERE
-
----
-
-## Algorithm Flow: DDPG Training Cycle
-
-### High-Level Overview:
-
-1.  **Initialise**: Create actor, critic, targets, replay buffer, noise
-
-2.  **Interact**: Use actor + noise to select actions in environment
-
-3.  **Store**: Save transitions (s, a, r, s', done) in replay buffer
-
-4.  **Sample**: Randomly sample mini-batch from buffer
-
-5.  **Update Critic**: Minimise TD-error using target networks
-
-6.  **Update Actor**: Maximise Q-value via policy gradient
-
-7.  **Update Targets**: Soft-update target networks
-
-8.  **Repeat**: Continue until convergence
 
 ### Why This Works:
 
@@ -304,7 +271,7 @@ ADD IT HERE
 
 - **Sample Efficiency**: Learn from failures, not just successes
 
-- **HER-Compatible Sampling**: `getSampleBatch()` works with HER buffer format
+- **HER-Compatible Sampling**: `get_sample_batch()` works with HER buffer format
 
 **Why HER?**:
 
@@ -318,15 +285,15 @@ ADD IT HERE
 
 ## Hyperparameters & Design Choices
 
-| Parameter      | Value | Rationale                                |
-| -------------- | ----- | ---------------------------------------- |
-| **γ (gamma)**  | 0.99  | Standard discount for episodic tasks     |
-| **τ (tau)**    | 0.005 | Very slow target updates for stability   |
-| **Actor LR**   | 1e-4  | Lower than critic to prevent instability |
-| **Critic LR**  | 1e-3  | Higher learning rate for value function  |
-| **Hidden Dim** | 400   | DDPG paper recommendation                |
-| **OU θ**       | 0.15  | Moderate mean reversion                  |
-| **OU σ**       | 0.2   | Moderate exploration noise               |
+| Parameter                  | Value | Rationale                                |
+| -------------------------- | ----- | ---------------------------------------- |
+| **discount_factor (γ)**    | 0.99  | Standard discount for episodic tasks     |
+| **soft_update_factor (τ)** | 0.005 | Very slow target updates for stability   |
+| **Actor LR**               | 1e-4  | Lower than critic to prevent instability |
+| **Critic LR**              | 1e-3  | Higher learning rate for value function  |
+| **Hidden Dim**             | 400   | DDPG paper recommendation                |
+| **OU θ**                   | 0.15  | Moderate mean reversion                  |
+| **OU σ**                   | 0.2   | Moderate exploration noise               |
 
 ## Key Concepts
 

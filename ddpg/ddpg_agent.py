@@ -97,10 +97,10 @@ class DDPGAgent:
         self.actor_optimiser.step()
 
         # Update target networks
-        self.softUpdate(self.actor, self.actor_target)
-        self.softUpdate(self.critic, self.critic_target)
+        self.soft_update(self.actor, self.actor_target)
+        self.soft_update(self.critic, self.critic_target)
 
-    def softUpdate(self, source_net: torch.nn.Module, target_net: torch.nn.Module) -> None:
+    def soft_update(self, source_net: torch.nn.Module, target_net: torch.nn.Module) -> None:
         """
         Soft-update target network parameters: theta_target = tau*theta_source + (1 - tau)*theta_target).
         """
