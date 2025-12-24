@@ -6,8 +6,7 @@ import numpy as np
 
 class DDPGAgent:
     """
-    DDPG agent containing actor, critic, target networks,
-    and update logic.
+    DDPG agent containing actor, critic, target networks, and update logic.
     """
 
     def __init__(
