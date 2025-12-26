@@ -173,6 +173,14 @@ class CustomParkingEnv(AbstractEnv):
                 heading=slot_info['heading'], speed=0
             )
             
+            try:
+                if hasattr(parked_vehicle, 'color'):
+                    parked_vehicle.color = (100, 200, 255)
+                elif hasattr(parked_vehicle, 'COLOR'):
+                    parked_vehicle.COLOR = (100, 200, 255)
+            except:
+                pass
+            
             self.road.vehicles.append(parked_vehicle)
             self.parking_slots[slot_num]['occupied'] = True
             self.parking_slots[slot_num]['vehicle'] = parked_vehicle

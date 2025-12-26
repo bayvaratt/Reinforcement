@@ -3,6 +3,7 @@ from ddpg.actor_network import Actor
 from ddpg.critic_network import Critic
 from ddpg.noise import OUNoise
 import numpy as np
+from replays.replay_buffer import ReplayBuffer
 
 class DDPGAgent:
     """
@@ -57,8 +58,8 @@ class DDPGAgent:
             action += self.noise.sample() * self.max_action
         return np.clip(action, -self.max_action, self.max_action) # Clip action to bounds (unnecessary if env normalises to [-1,1])
     
-    def get_sample_batch(self, her_buffer, batch_size: int):
-        batch = her_buffer.sample(batch_size) # Get sample batch from HER buffer containing states, actions, rewards, next_states, dones
+    def get_sample_batch(self, her_buffer: ReplayBuffer, batch_size: int):
+        batch = her_buffer.sample(batch_size) # Get sample batch from HER buffer as a dict containing states, actions, rewards, next_states, dones as keys
 
         state = torch.FloatTensor(batch['states']).to(self.device)
         action = torch.FloatTensor(batch['actions']).to(self.device)
@@ -68,7 +69,7 @@ class DDPGAgent:
         
         return state, action, reward, next_state, done
 
-    def train(self, her_buffer, batch_size: int) -> None:
+    def train(self, her_buffer: ReplayBuffer, batch_size: int) -> None:
         """
         Perform one DDPG training step
         (critic update -> actor update -> target update).
