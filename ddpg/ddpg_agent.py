@@ -4,6 +4,7 @@ from ddpg.critic_network import Critic
 from ddpg.noise import OUNoise
 import numpy as np
 from replays.replay_buffer import ReplayBuffer
+import os
 
 class DDPGAgent:
     """
@@ -43,6 +44,9 @@ class DDPGAgent:
         
         """ Exploration noise object"""
         self.noise = OUNoise(action_dim)
+        self.noise_scale = 1.0  # Initial noise scaling factor
+        self.noise_decay = 0.995  #Decay factor per episode
+        self.min_noise_scale = 0.1  #Minimum noise level
 
     def select_action(self, state: np.ndarray, noise: bool = True) -> np.ndarray:
         """
@@ -55,8 +59,14 @@ class DDPGAgent:
         self.actor.train()
         action = action_tensor.cpu().data.numpy().flatten()
         if noise:
-            action += self.noise.sample() * self.max_action
+            action += self.noise.sample() * self.max_action * self.noise_scale
         return np.clip(action, -self.max_action, self.max_action) # Clip action to bounds (unnecessary if env normalises to [-1,1])
+    
+    def decay_noise(self) -> None:
+        """
+        Decay the noise scale factor which is called at the end of each episode.
+        """
+        self.noise_scale = max(self.min_noise_scale, self.noise_scale * self.noise_decay)
     
     def get_sample_batch(self, her_buffer: ReplayBuffer, batch_size: int):
         batch = her_buffer.sample(batch_size) # Get sample batch from HER buffer as a dict containing states, actions, rewards, next_states, dones as keys
@@ -102,7 +112,35 @@ class DDPGAgent:
 
     def soft_update(self, source_net: torch.nn.Module, target_net: torch.nn.Module) -> None:
         """
-        Soft-update target network parameters: theta_target = tau*theta_source + (1 - tau)*theta_target).
+        Soft-update target network parameters dervied from eq: theta_target = tau*theta_source + (1 - tau)*theta_target).
         """
         for p, target_p in zip(source_net.parameters(), target_net.parameters()):
             target_p.data.copy_(self.soft_update_factor * p.data + (1 - self.soft_update_factor) * target_p.data)
+
+            
+
+    def save(self, filepath: str) -> None:
+        """
+        Save model and optimiser parameters.
+        """
+        torch.save({
+            'actor_state_dict': self.actor.state_dict(),
+            'critic_state_dict': self.critic.state_dict(),
+            'actor_target_state_dict': self.actor_target.state_dict(),
+            'critic_target_state_dict': self.critic_target.state_dict(),
+            'actor_optimiser_state_dict': self.actor_optimiser.state_dict(),
+            'critic_optimiser_state_dict': self.critic_optimiser.state_dict(),
+        }, filepath)
+
+    def load(self, filepath: str) -> None:
+        """
+        Load model and optimiser parameters.
+        """
+        if os.path.isfile(filepath):
+            checkpoint = torch.load(filepath, map_location=self.device)
+            self.actor.load_state_dict(checkpoint['actor_state_dict'])
+            self.critic.load_state_dict(checkpoint['critic_state_dict'])
+            self.actor_target.load_state_dict(checkpoint['actor_target_state_dict'])
+            self.critic_target.load_state_dict(checkpoint['critic_target_state_dict'])
+            self.actor_optimiser.load_state_dict(checkpoint['actor_optimiser_state_dict'])
+            self.critic_optimiser.load_state_dict(checkpoint['critic_optimiser_state_dict'])
