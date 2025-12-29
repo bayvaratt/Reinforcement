@@ -14,7 +14,7 @@ from ddpg.trainer import Trainer
 from env.parallel_lot import ParallelParkingEnv
 
 
-def visual_training_demo():
+def visual_training_demo(resume=False):
     """
     Visual training demonstration - watch the DDPG agent learn to parallel park!
     """
@@ -30,8 +30,8 @@ def visual_training_demo():
     print("Warm-up: First 1000 steps are RANDOM actions to fill memory buffer\n")
 
     # --- Configuration for Visual Demo ---
-    num_episodes = 1000            
-    max_steps_per_episode = 200    
+    num_episodes = 50            
+    max_steps_per_episode = 500    
     batch_size = 256               
     render_every_n_steps = 10      
     render_delay = 0.0        
@@ -74,6 +74,16 @@ def visual_training_demo():
     print("\n[3/3] Starting Visual Training...")
     trainer = Trainer(parking_env, agent)
     
+    if resume:
+        load_path = "ddpg_agent_final_.pth" # Change path to your best model
+        if os.path.exists(load_path):
+            print(f"RESUMING: Loading weights from {load_path}")
+            agent.load(load_path)
+            # Lower noise since the agent already knows how to drive
+            agent.noise_scale = 0.3 
+        else:
+            print(f"WARNING: {load_path} not found. Starting from scratch!")
+   
     print(f"  Trainer ready")
     print(f"    - Rendering every {render_every_n_steps} steps")
     print(f"    - Warm-up phase: {warm_up_steps} steps")
@@ -139,32 +149,19 @@ def visual_training_demo():
             # 3. Decay noise
             agent.decay_noise()
 
-            # 4. Logging
-            episode_rewards.append(episode_reward)
-            episode_lengths.append(episode_steps)
-            trainer.episode_rewards = episode_rewards
+            # 4. Logging - DELEGATE TO TRAINER
+            # Feed the data into the trainer object so it knows the history
+            trainer.episode_rewards.append(episode_reward)
+            trainer.episode_lengths.append(episode_steps)
 
-            # Track success and crash rates
             is_success = info.get('is_success', False)
             is_crash = info.get('is_crash', False) or info.get('is_out_of_bounds', False)
-            success_history.append(is_success)
-            crash_history.append(is_crash)
+            
+            trainer.success_history.append(is_success)
+            trainer.crash_history.append(is_crash)
 
-            if (episode + 1) % print_every == 0:
-                avg_reward = np.mean(episode_rewards[-print_every:])
-                avg_length = np.mean(episode_lengths[-print_every:])
-                success_rate = np.mean(success_history[-print_every:]) * 100
-                crash_rate = np.mean(crash_history[-print_every:]) * 100
-                phase = "WARM-UP" if total_steps < warm_up_steps else "TRAINING"
-                
-                print(
-                    f"Episode {episode + 1:4d}/{num_episodes} [{phase}] | "
-                    f"Reward: {avg_reward:7.2f} | "
-                    f"Success: {success_rate:3.0f}% | "
-                    f"Crash: {crash_rate:3.0f}% | "
-                    f"Steps: {avg_length:5.1f} | "
-                    f"Noise: {agent.noise_scale:.3f}"
-                )
+            # This function calculates the averages, prints them, AND saves the best model
+            trainer.print_episode_summary(episode, print_every)
 
         print("\n" + "=" * 80)
         print("VISUAL TRAINING COMPLETED!")
@@ -233,15 +230,81 @@ def quick_visual_test():
         env.close()
         print("Test completed!")
 
+def test_model(model_path="best_parking_model.pth"):
+    print(f"--- TESTING MODEL: {model_path} ---")
+    
+    if not os.path.exists(model_path):
+        print(f"Error: File '{model_path}' not found.")
+        return
+
+    # 1. Setup Environment (Human Render Mode)
+    env = ParallelParkingEnv(config={}, render_mode="human")
+    obs, info = env.reset()
+    
+    # 2. Setup Agent (Must match training dimensions)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    state_dim = obs.shape[0]
+    action_dim = env.action_space.shape[0]
+    max_action = np.array([np.pi / 4, 1.0]) # Match the training max_action
+
+    agent = DDPGAgent(
+        state_dim=state_dim, 
+        action_dim=action_dim, 
+        max_action=max_action,
+        device=device
+    )
+
+    # 3. Load the Weights
+    agent.load(model_path)
+    print("Model loaded successfully.")
+
+    # 4. Run Test Loop
+    num_test_episodes = 5
+    
+    for i in range(num_test_episodes):
+        obs, _ = env.reset()
+        done = False
+        step = 0
+        total_reward = 0
+        
+        print(f"\nTest Episode {i+1}...")
+        
+        while not done:
+            # IMPORTANT: noise=False for testing!
+            action = agent.select_action(obs, noise=False)
+            
+            obs, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
+            
+            total_reward += reward
+            step += 1
+            
+            env.render()
+            # Optional: Add sleep to watch it in slow motion
+            # time.sleep(0.05)
+        
+        # Result
+        status = "SUCCESS" if info.get('is_success') else "FAIL"
+        if info.get('is_crash') or info.get('is_out_of_bounds'): status = "CRASH"
+            
+        print(f"Result: {status} | Reward: {total_reward:.2f} | Steps: {step}")
+
+    env.close()
 
 if __name__ == "__main__":
     print("Choose training mode:")
-    print(f"1. Full visual training (1000 episodes)")
+    print("1. Full visual training (1000 episodes)")
     print("2. Quick visual test (1 episode)")
+    print("3. Test current Model (5 episodes)")
+    print("4. Load Model - Continue training (500 episodes)")
 
-    choice = input("Enter choice (1 or 2): ").strip()
+    choice = input("Enter choice (1 or 2 or 3 or 4): ").strip()
 
-    if choice == "2":
+    if choice == "1":
+        visual_training_demo(resume=False)
+    elif choice == "2":
         quick_visual_test()
+    elif choice == "3":
+        test_model("ddpg_agent_final.pth")
     else:
-        visual_training_demo()
+        visual_training_demo(resume=True)
