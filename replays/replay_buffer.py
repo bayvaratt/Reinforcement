@@ -34,7 +34,7 @@ class ReplayBuffer:
         """
         Store a transition in the buffer.
         """
-        index = self.pointer % self.capacity # Circular buffer: for example, if capacity=1000, after 1000 additions, start overwriting from index 0
+        index = self.pointer % self.capacity # Circular buffer. for example, if capacity=1000, after 1000 additions, start overwriting from index 0
         self.buffer["states"][index] = state
         self.buffer["actions"][index] = action
         self.buffer["rewards"][index] = reward
@@ -48,7 +48,11 @@ class ReplayBuffer:
         """
         Sample a batch of transitions
         """
-        indices = np.random.choice(self.size, size=batch_size, replace=False)
+        # Ensure we don't sample more than available
+        sample_size = min(batch_size, self.size)
+        replace = sample_size > self.size 
+        
+        indices = np.random.choice(self.size, size=sample_size, replace=replace)
         batch = {
             "states": self.buffer["states"][indices],
             "actions": self.buffer["actions"][indices],

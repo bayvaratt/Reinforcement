@@ -7,7 +7,7 @@ class Actor(nn.Module):
     Maps state (including goal) -> continuous action.
     """
 
-    def __init__(self, state_dim: int, action_dim: int, max_action: float, hidden_dim: int) -> None:
+    def __init__(self, state_dim: int, action_dim: int, max_action: torch.Tensor, hidden_dim: int) -> None:
         super().__init__()
         self.state_dim = state_dim # Input dimension (state + goal)
         self.action_dim = action_dim # Output dimension (action)
