@@ -34,6 +34,7 @@ class Trainer:
         self.crash_history = []
 
         self.best_success_rate = 0.0
+        self.best_crash_rate = 100.0
 
     def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray) -> float:
         distance = np.linalg.norm(achieved_goal - desired_goal)
@@ -106,11 +107,13 @@ class Trainer:
             success_rate = np.mean(self.success_history[-print_every:]) * 100
             crash_rate = np.mean(self.crash_history[-print_every:]) * 100
             
-            if success_rate > self.best_success_rate:
+            # Save best model based on success rate AND crash rate
+            if (success_rate > self.best_success_rate and crash_rate <= self.best_crash_rate):
                 self.best_success_rate = success_rate
-                save_path = f"best_ddpg_model_success_{self.best_success_rate:.2f}.pth"
+                self.best_crash_rate = crash_rate
+                save_path = f"best_ddpg_model_success_{self.best_success_rate:.1f}_crash_{self.best_crash_rate:.1f}.pth"
                 self.agent.save(save_path)
-                print(f"New best model saved: {save_path}")
+                print(f"New best model saved! Success: {success_rate:.1f}% | Crash: {crash_rate:.1f}%")
 
             print(
                 f"Episode {episode + 1:4d} | "

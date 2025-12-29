@@ -87,11 +87,6 @@ def visual_training_demo():
     episode_lengths = []
     success_history = []
     crash_history = []
-    
-    # Best model tracking
-    best_success_rate = 0.0
-    best_crash_rate = 100.0  # Start with high crash rate
-    best_model_path = "ddpg_agent_best.pth"
 
     try:
         for episode in range(num_episodes):
@@ -170,18 +165,11 @@ def visual_training_demo():
                     f"Steps: {avg_length:5.1f} | "
                     f"Noise: {agent.noise_scale:.3f}"
                 )
-                
-                if (success_rate > best_success_rate and crash_rate <= best_crash_rate and 
-                    total_steps >= warm_up_steps):
-                    best_success_rate = success_rate
-                    best_crash_rate = crash_rate
-                    agent.save(best_model_path)
-                    print(f"  → New best model saved! Success: {success_rate:.1f}% | Crash: {crash_rate:.1f}%")
 
         print("\n" + "=" * 80)
         print("VISUAL TRAINING COMPLETED!")
         print(f"Final model saved as: ddpg_agent_final.pth")
-        print(f"Best model saved as: {best_model_path} (Success: {best_success_rate:.1f}% | Crash: {best_crash_rate:.1f}%)")
+        print(f"Best model saved by trainer (Success: {trainer.best_success_rate:.1f}% | Crash: {trainer.best_crash_rate:.1f}%)")
         print("=" * 80)
         agent.save("ddpg_agent_final.pth")
 
