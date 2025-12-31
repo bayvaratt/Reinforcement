@@ -3,6 +3,7 @@ import numpy as np
 import os
 import sys
 import time
+from datetime import datetime
 
 # Add the root directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -37,6 +38,9 @@ class Trainer:
         self.best_crash_rate = 100.0
 
     def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray) -> float:
+        """
+        Compute reward based on distance to goal + main tuning components.
+        """
         distance = np.linalg.norm(achieved_goal - desired_goal)
         
         reward = -0.15 # Base penalty
@@ -45,7 +49,7 @@ class Trainer:
         
         reward += (1.0 - normalised_distance) * 0.1 
         
-        if distance < 3.0:
+        if distance < 1.0:
             reward += 50.0
             
         return reward
@@ -107,11 +111,21 @@ class Trainer:
             success_rate = np.mean(self.success_history[-print_every:]) * 100
             crash_rate = np.mean(self.crash_history[-print_every:]) * 100
             
-            # Save best model based on success rate AND crash rate
-            if (success_rate > self.best_success_rate and crash_rate <= self.best_crash_rate):
-                self.best_success_rate = success_rate
-                self.best_crash_rate = crash_rate
-                save_path = f"best_ddpg_model_success_{self.best_success_rate:.1f}_crash_{self.best_crash_rate:.1f}.pth"
+            min_success = 50.0
+            max_crash = 20.0
+            
+            # Dynamic model saving criteria so that we only save significantly improved models
+            is_valid_model = (success_rate >= min_success and crash_rate <= max_crash)
+            improved_success = (success_rate >= self.best_success_rate + 5.0)
+            improved_safety = (crash_rate <= self.best_crash_rate - 5.0 and success_rate >= self.best_success_rate)
+
+            if is_valid_model and (improved_success or improved_safety):
+                self.best_success_rate = max(success_rate, self.best_success_rate)
+                if crash_rate < self.best_crash_rate:
+                    self.best_crash_rate = crash_rate
+                    
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                save_path = f"results/parallel_parking/best_ddpg_model_success_{success_rate:.1f}_crash_{crash_rate:.1f}_{timestamp}.pth"
                 self.agent.save(save_path)
                 print(f"New best model saved! Success: {success_rate:.1f}% | Crash: {crash_rate:.1f}%")
 
@@ -195,7 +209,7 @@ class Trainer:
             # 1. Store the REAL experience (with the -40 crash penalty)
             self.replay_buffer.add(state, action, reward, next_state, done)
 
-            # 2. HER Logic (Hindsight Experience Replay)
+            # 2. HER Logic (Hindsight Experience Replay) below
             available_future = cache_size - idx - 1
             if available_future > 0:
                 num_samples = min(self.future_k, available_future)

@@ -4,8 +4,10 @@ import numpy as np
 import torch
 import time
 
-# Add the root directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+results_dir = "results/parallel_parking"
+os.makedirs(results_dir, exist_ok=True)
 
 from utils.seeding import set_seed
 
@@ -27,17 +29,19 @@ def visual_training_demo(resume=False):
     print("Controls: Close pygame window to stop training")
     print("Stats: Episode rewards and success rates displayed in terminal")
     print("Speed: Rendering every 10 steps")
-    print("Warm-up: First 1000 steps are RANDOM actions to fill memory buffer\n")
+    print("Warm-up: First 5000 steps are RANDOM actions to fill memory buffer\n")
 
-    # --- Configuration for Visual Demo ---
-    num_episodes = 50            
-    max_steps_per_episode = 500    
+    num_episodes = 1000            
+    max_steps_per_episode = 200    
     batch_size = 256               
-    render_every_n_steps = 10      
-    render_delay = 0.0        
-    print_every = 10
-    
-    warm_up_steps = 5000
+    render_every_n_steps = 10     
+    render_delay = 0.0             
+    print_every = 10               
+
+    warm_up_steps = 5000           
+    if resume:
+        warm_up_steps = 0  # Skip warm-up when resuming from saved model
+        num_episodes = 50
     set_seed(42)
     # Device setup
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -51,7 +55,7 @@ def visual_training_demo(resume=False):
     state_dim = obs.shape[0]
     action_dim = parking_env.action_space.shape[0]
     
-    max_action = np.array([np.pi / 4, 0.5])
+    max_action = np.array([np.pi / 4, 1.0])
 
     print("  Environment ready with visual rendering")
     print(f"    - Goal slot: {info.get('goal_slot', 'N/A')} (look for striped lines)")
@@ -75,14 +79,17 @@ def visual_training_demo(resume=False):
     trainer = Trainer(parking_env, agent)
     
     if resume:
-        load_path = "ddpg_agent_final_.pth" # Change path to your best model
+        load_path = "results/parallel_parking/ddpg_agent_final.pth"
         if os.path.exists(load_path):
             print(f"RESUMING: Loading weights from {load_path}")
             agent.load(load_path)
-            # Lower noise since the agent already knows how to drive
-            agent.noise_scale = 0.3 
+            
+            agent.noise_scale = 0.2
+            trainer.best_success_rate = 80.0 
+            print(f"  - Trainer baseline set to 80% to protect best_model.pth")
+            
         else:
-            print(f"WARNING: {load_path} not found. Starting from scratch!")
+            print(f"{load_path} not found. Starting from scratch!")
    
     print(f"  Trainer ready")
     print(f"    - Rendering every {render_every_n_steps} steps")
@@ -93,10 +100,6 @@ def visual_training_demo(resume=False):
     print("=" * 80 + "\n")
 
     total_steps = 0
-    episode_rewards = []
-    episode_lengths = []
-    success_history = []
-    crash_history = []
 
     try:
         for episode in range(num_episodes):
@@ -110,7 +113,7 @@ def visual_training_demo(resume=False):
 
             for _ in range(max_steps_per_episode):
                 
-                # Warm-up logic...
+                # Warm-up logic:
                 if total_steps < warm_up_steps:
                     action = parking_env.action_space.sample()
                 else:
@@ -136,8 +139,6 @@ def visual_training_demo(resume=False):
                 if done:
                     break
             
-            # --- End of Episode Updates ---
-            
             trainer.store_episode(episode_cache)
 
             # 2. Train the agent (reduced frequency for stability)
@@ -149,7 +150,6 @@ def visual_training_demo(resume=False):
             # 3. Decay noise
             agent.decay_noise()
 
-            # 4. Logging - DELEGATE TO TRAINER
             # Feed the data into the trainer object so it knows the history
             trainer.episode_rewards.append(episode_reward)
             trainer.episode_lengths.append(episode_steps)
@@ -165,15 +165,15 @@ def visual_training_demo(resume=False):
 
         print("\n" + "=" * 80)
         print("VISUAL TRAINING COMPLETED!")
-        print(f"Final model saved as: ddpg_agent_final.pth")
+        print(f"Final model saved as: results/parallel_parking/ddpg_agent_final.pth")
         print(f"Best model saved by trainer (Success: {trainer.best_success_rate:.1f}% | Crash: {trainer.best_crash_rate:.1f}%)")
         print("=" * 80)
-        agent.save("ddpg_agent_final.pth")
+        agent.save("results/parallel_parking/ddpg_agent_final.pth")
 
     except KeyboardInterrupt:
         print("\n\nTraining interrupted by user")
         print("Saving checkpoint...")
-        checkpoint_path = "ddpg_agent_visual_checkpoint.pth"
+        checkpoint_path = "results/parallel_parking/ddpg_agent_visual_checkpoint.pth"
         agent.save(checkpoint_path)
         print(f"Checkpoint saved: {checkpoint_path}")
 
@@ -230,22 +230,22 @@ def quick_visual_test():
         env.close()
         print("Test completed!")
 
-def test_model(model_path="best_parking_model.pth"):
+def test_model(model_path: str):
     print(f"--- TESTING MODEL: {model_path} ---")
+    successes = 0
+    crashes = 0
     
     if not os.path.exists(model_path):
         print(f"Error: File '{model_path}' not found.")
         return
 
-    # 1. Setup Environment (Human Render Mode)
     env = ParallelParkingEnv(config={}, render_mode="human")
     obs, info = env.reset()
     
-    # 2. Setup Agent (Must match training dimensions)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     state_dim = obs.shape[0]
     action_dim = env.action_space.shape[0]
-    max_action = np.array([np.pi / 4, 1.0]) # Match the training max_action
+    max_action = np.array([np.pi / 4, 1.0])
 
     agent = DDPGAgent(
         state_dim=state_dim, 
@@ -259,7 +259,7 @@ def test_model(model_path="best_parking_model.pth"):
     print("Model loaded successfully.")
 
     # 4. Run Test Loop
-    num_test_episodes = 5
+    num_test_episodes = 100
     
     for i in range(num_test_episodes):
         obs, _ = env.reset()
@@ -286,8 +286,15 @@ def test_model(model_path="best_parking_model.pth"):
         # Result
         status = "SUCCESS" if info.get('is_success') else "FAIL"
         if info.get('is_crash') or info.get('is_out_of_bounds'): status = "CRASH"
-            
+        if status == "SUCCESS":
+            successes += 1
+        elif status == "CRASH":
+            crashes += 1
         print(f"Result: {status} | Reward: {total_reward:.2f} | Steps: {step}")
+
+    success_rate = (successes / num_test_episodes) * 100
+    crash_rate = (crashes / num_test_episodes) * 100
+    print("Success Rate: {:.1f}% | Crash Rate: {:.1f}%".format(success_rate, crash_rate))
 
     env.close()
 
@@ -295,8 +302,8 @@ if __name__ == "__main__":
     print("Choose training mode:")
     print("1. Full visual training (1000 episodes)")
     print("2. Quick visual test (1 episode)")
-    print("3. Test current Model (5 episodes)")
-    print("4. Load Model - Continue training (500 episodes)")
+    print("3. Test saved Model (100 episodes)")
+    print("4. Load Model - Continue training (50 episodes)")
 
     choice = input("Enter choice (1 or 2 or 3 or 4): ").strip()
 
@@ -305,6 +312,11 @@ if __name__ == "__main__":
     elif choice == "2":
         quick_visual_test()
     elif choice == "3":
-        test_model("ddpg_agent_final.pth")
+        model_input = input("Enter the model file name or full path (e.g., best_ddpg_model_success_80.0_crash_10.0.pth or results/parallel_parking/filename.pth): ").strip()
+        if model_input.startswith("results/parallel_parking/"):
+            model_path = model_input
+        else:
+            model_path = f"results/parallel_parking/{model_input}"
+        test_model(model_path)
     else:
         visual_training_demo(resume=True)

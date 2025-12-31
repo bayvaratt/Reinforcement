@@ -115,14 +115,11 @@ class ParallelParkingEnv(AbstractEnv):
         dx = abs(x - gx)
         dy = abs(y - gy)
         
-        # --- SUCCESS CHECK: CAPTURE THE FLAG ---
-        # Matches Trainer logic exactly (Distance < 3.0)
+        # Matches Trainer logic (Distance < 1.0)
         dist_to_goal = np.linalg.norm([dx, dy])
-        is_success = (dist_to_goal < 3.0) 
-        
-        # REMOVED: Orientation check. 
-        # We first want the agent to learn to GO to the spot.
-        # Alignment is a Level 2 problem.
+        is_success = (dist_to_goal < 1.0) 
+
+        # We first want the agent to learn to GO to the spot.ss
         
         terminated = is_crashed or is_out_of_bounds or is_success
         truncated = self.time >= self.config["duration"]
@@ -222,41 +219,64 @@ class ParallelParkingEnv(AbstractEnv):
     
     def _create_vehicles(self) -> None:
         """
-        Modified to spawn the agent LATERALLY closer to the goal.
+        Modified to spawn the agent LATERALLY closer to the goal, but safely away from parked cars.
         """
-        dist_to_goal = self.np_random.uniform(8.0, 15.0)
-        spawn_side = self.np_random.choice([-1, 1]) 
+        self._spawn_random_parked_cars()
         
         goal_x = self.goal[0]
-        goal_y = self.goal[1] # 10 or -10
+        goal_y = self.goal[1]  # 10 or -10
         
-        spawn_x = goal_x + (dist_to_goal * spawn_side)
-        spawn_x = np.clip(spawn_x, -28, 28)
+        parked_positions = []
+        for vehicle in self.road.vehicles:
+            if vehicle is not self.vehicle: 
+                parked_positions.append(vehicle.position)
         
-        # --- LATERAL CURRICULUM ---
-        # Spawn somewhere between the road (y=0) and the spot (y=10 or -10)
-        # This ensures the car is partially "in the lane" to start.
-        if goal_y > 0:
-             spawn_y = self.np_random.uniform(0, goal_y)
-        else:
-             spawn_y = self.np_random.uniform(goal_y, 0)
+        max_attempts = 50
+        min_distance_to_parked = 5.0
         
-        heading = 0 if spawn_side == -1 else np.pi
+        for attempt in range(max_attempts):
+            dist_to_goal = self.np_random.uniform(8.0, 15.0)
+            spawn_side = self.np_random.choice([-1, 1]) 
+            
+            spawn_x = goal_x + (dist_to_goal * spawn_side)
+            spawn_x = np.clip(spawn_x, -25, 25)
+            
+            if goal_y > 0:
+                spawn_y = self.np_random.uniform(0, goal_y)
+            else:
+                spawn_y = self.np_random.uniform(goal_y, 0)
+            
+            spawn_pos = np.array([spawn_x, spawn_y])
+            
+            is_safe = True
+            for parked_pos in parked_positions:
+                distance = np.linalg.norm(spawn_pos - parked_pos)
+                if distance < min_distance_to_parked:
+                    is_safe = False
+                    break
+            
+            if is_safe:
+                heading = 0 if spawn_side == -1 else np.pi
+                ego_vehicle = self.action_type.vehicle_class(self.road, [spawn_x, spawn_y], heading=heading, speed=0)
+                self.road.vehicles.append(ego_vehicle)
+                self.vehicle = ego_vehicle
+                self.agent_spawn_side = 'left' if spawn_side == -1 else 'right'
+                return
         
-        # Spawn at [spawn_x, spawn_y] instead of [spawn_x, 0]
-        ego_vehicle = self.action_type.vehicle_class(self.road, [spawn_x, spawn_y], heading=heading, speed=0)
+        safe_x = self.np_random.choice([-20, 20])
+        safe_y = 0
+        heading = 0 if safe_x < 0 else np.pi
+        ego_vehicle = self.action_type.vehicle_class(self.road, [safe_x, safe_y], heading=heading, speed=0)
         self.road.vehicles.append(ego_vehicle)
         self.vehicle = ego_vehicle
-        
-        self.agent_spawn_side = 'left' if spawn_side == -1 else 'right'
-        self._spawn_random_parked_cars()
+        self.agent_spawn_side = 'left' if safe_x < 0 else 'right'
     
     def _spawn_random_parked_cars(self):
         """
-        Spawns cars but LEAVES NEIGHBORS EMPTY.
+        Spawns cars in all slots except the goal slot.
         """
         all_slots = list(range(1, 9))
-        blocked_slots = {self.goal_slot_id, self.goal_slot_id - 1, self.goal_slot_id + 1}
+        blocked_slots = {self.goal_slot_id}
         
         slots_to_spawn = [s for s in all_slots if s not in blocked_slots]
             
