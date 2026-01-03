@@ -12,24 +12,21 @@ class Critic(nn.Module):
     def __init__(self, state_dim: int, action_dim: int, hidden_dim: int) -> None:
         super().__init__()
 
-        #(1)
-        self.fc1 = nn.Linear(state_dim, hidden_dim) # First layer processes state input
+        self.fc1 = nn.Linear(state_dim, hidden_dim)
         self.ln1 = nn.LayerNorm(hidden_dim)
 
-        #(2)
-        self.fc2 = nn.Linear(hidden_dim + action_dim, hidden_dim) # Second layer processes state features, action dimension concatenated
+        self.fc2 = nn.Linear(hidden_dim + action_dim, hidden_dim)  # Concat state + action
         self.ln2 = nn.LayerNorm(hidden_dim)
 
-        #(3)
-        self.fc3 = nn.Linear(hidden_dim, 1) # Output layer produces scalar Q-value
+        self.fc3 = nn.Linear(hidden_dim, 1)
 
     def forward(self, state: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
         """
         Forward pass through the critic network.
         """
 
-        x = F.relu(self.ln1(self.fc1(state))) #(1)
-        x = torch.cat([x, action], dim=1) #(2)
-        x = F.relu(self.ln2(self.fc2(x))) #(2)
-        q_value = self.fc3(x) #(3)
+        x = F.relu(self.ln1(self.fc1(state)))
+        x = torch.cat([x, action], dim=1)
+        x = F.relu(self.ln2(self.fc2(x)))
+        q_value = self.fc3(x)
         return q_value

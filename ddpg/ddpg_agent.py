@@ -3,7 +3,6 @@ import os
 import sys
 from typing import Union
 
-# Add the root directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ddpg.actor_network import Actor
@@ -18,15 +17,7 @@ class DDPGAgent:
     DDPG agent containing actor, critic, target networks, and update logic.
     """
 
-    def __init__(
-        self,
-        state_dim: int,
-        action_dim: int,
-        max_action: Union[float, np.ndarray],
-        discount_factor: float = 0.99,
-        soft_update_factor: float = 0.005,
-        device: torch.device = torch.device("cpu"),
-    ) -> None:
+    def __init__(self, state_dim: int, action_dim: int, max_action: Union[float, np.ndarray], discount_factor: float = 0.99, soft_update_factor: float = 0.001, device: torch.device = torch.device("cpu"),):
         self.discount_factor = discount_factor
         self.soft_update_factor = soft_update_factor
         if isinstance(max_action, np.ndarray):
@@ -36,27 +27,27 @@ class DDPGAgent:
         self.device = device
         self.criterion = torch.nn.MSELoss()
 
-        """ Actor initialisation: actor, target actor, optimiser"""
+        # Actor: network, target network, and optimiser
         self.actor = Actor(state_dim, action_dim, self.max_action, hidden_dim=400).to(self.device)
 
         self.actor_target = Actor(state_dim, action_dim, self.max_action, hidden_dim=400).to(self.device)
         self.actor_target.load_state_dict(self.actor.state_dict())
 
-        self.actor_optimiser = torch.optim.Adam(self.actor.parameters(), lr=1e-3, weight_decay=1e-4) #lr and weight_decay might need tuning
+        self.actor_optimiser = torch.optim.Adam(self.actor.parameters(), lr=5e-5)  # Fine-tune lr if needed
 
-        """ Critic initialisation: critic, target critic, optimiser"""
+        # Critic: network, target network, and optimiser
         self.critic = Critic(state_dim, action_dim, hidden_dim=400).to(self.device)
 
         self.critic_target = Critic(state_dim, action_dim, hidden_dim=400).to(self.device)
         self.critic_target.load_state_dict(self.critic.state_dict())
 
-        self.critic_optimiser = torch.optim.Adam(self.critic.parameters(), lr=2e-3, weight_decay=1e-4)
+        self.critic_optimiser = torch.optim.Adam(self.critic.parameters(), lr=5e-4)
 
-        """ Exploration noise object"""
+        # Exploration noise
         self.noise = OUNoise(action_dim)
         self.noise_scale = 0.5
-        self.noise_decay = 0.9995
-        self.min_noise_scale = 0.1
+        self.noise_decay = 0.995
+        self.min_noise_scale = 0.05
 
     def select_action(self, state: np.ndarray, noise: bool = True) -> np.ndarray:
         state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
@@ -69,7 +60,7 @@ class DDPGAgent:
         max_action_np = self.actor.max_action.cpu().numpy()
         
         if noise:
-            action += self.noise.sample() * max_action_np * self.noise_scale
+            action += self.noise.sample() * max_action_np * self.noise_scale  # Add exploration noise
         
         return np.clip(action, -max_action_np, max_action_np)
 
@@ -77,22 +68,22 @@ class DDPGAgent:
         """
         Decay the noise scale factor which is called at the end of each episode.
         """
-        self.noise_scale = max(self.min_noise_scale, self.noise_scale * self.noise_decay)
+        self.noise_scale = max(self.min_noise_scale, self.noise_scale * self.noise_decay)  # Exponential decay
 
     def get_sample_batch(self, her_buffer: ReplayBuffer, batch_size: int):
-        batch = her_buffer.sample(batch_size)  # Get sample batch from HER buffer as a dict containing states, actions, rewards, next_states, dones as keys
+        batch = her_buffer.sample(batch_size)
 
         state = torch.FloatTensor(batch["states"]).to(self.device)
         action = torch.FloatTensor(batch["actions"]).to(self.device)
         reward = torch.FloatTensor(batch["rewards"]).unsqueeze(1).to(self.device)
         next_state = torch.FloatTensor(batch["next_states"]).to(self.device)
-        done = (torch.FloatTensor(batch["dones"]).unsqueeze(1).to(self.device))  # used to measure episode termination (1 if done, 0 otherwise)
+        done = torch.FloatTensor(batch["dones"]).unsqueeze(1).to(self.device)
 
         return state, action, reward, next_state, done
 
     def train(self, her_buffer: ReplayBuffer, batch_size: int) -> None:
         """
-        Perform one DDPG training step with Gradient Clipping.
+        Perform one DDPG training step with gradient clipping.
         """
         state, action, reward, next_state, done = self.get_sample_batch(her_buffer, batch_size)
 
@@ -107,10 +98,10 @@ class DDPGAgent:
         critic_loss = self.criterion(current_Q, target_Q)
         self.critic_optimiser.zero_grad()
         critic_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 1.0) 
+        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 1.0)  # Prevent exploding gradients
         self.critic_optimiser.step()
 
-        # Update actor - we negate the critic output to perform gradient ascent to maximise expected return
+        # Update actor - negate the critic output to perform gradient ascent to maximise expected return
         actor_loss = -self.critic(state, self.actor(state)).mean()
         self.actor_optimiser.zero_grad()
         actor_loss.backward()
@@ -123,7 +114,8 @@ class DDPGAgent:
 
     def soft_update(self, source_net: torch.nn.Module, target_net: torch.nn.Module) -> None:
         """
-        Soft-update target network parameters dervied from eq: theta_target = tau*theta_source + (1 - tau)*theta_target).
+        Soft-update target network parameters derived from:
+        theta_target = tau * theta_source + (1 - tau) * theta_target
         """
         for p, target_p in zip(source_net.parameters(), target_net.parameters()):
             target_p.data.copy_(self.soft_update_factor * p.data + (1 - self.soft_update_factor) * target_p.data)
@@ -142,7 +134,7 @@ class DDPGAgent:
                 "critic_optimiser_state_dict": self.critic_optimiser.state_dict(),
             },
             filepath,
-        )
+        )  # Save checkpoint to disk
 
 
 
@@ -157,4 +149,4 @@ class DDPGAgent:
             self.actor_target.load_state_dict(checkpoint["actor_target_state_dict"])
             self.critic_target.load_state_dict(checkpoint["critic_target_state_dict"])
             self.actor_optimiser.load_state_dict(checkpoint["actor_optimiser_state_dict"])
-            self.critic_optimiser.load_state_dict(checkpoint["critic_optimiser_state_dict"])
+            self.critic_optimiser.load_state_dict(checkpoint["critic_optimiser_state_dict"])  # Restore optimiser states

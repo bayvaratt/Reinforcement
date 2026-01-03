@@ -1,3 +1,5 @@
+# Parts of code is referenced using the highway-env library
+# URL: https://github.com/Farama-Foundation/HighwayEnv
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
@@ -5,13 +7,12 @@ from highway_env import utils
 from highway_env.envs.common.abstract import AbstractEnv
 from highway_env.road.lane import StraightLane, LineType
 from highway_env.road.road import Road, RoadNetwork
-from highway_env.vehicle.kinematics import Vehicle
 
 class ParallelParkingEnv(AbstractEnv):
     """
-    A specific environment for Parallel Parking with HER compatibility.
-    State Space: 10 Dimensions (3 Relative + 3 Absolute + 2 Physics + 2 Goal)
-    Action Space: 2 Dimensions (Steering, Acceleration)
+    Parallel parking environment with HER compatibility.
+    State space: 14 dimensions
+    Action space: 2 dimensions (steering, acceleration)
     """
     
     @classmethod
@@ -34,7 +35,7 @@ class ParallelParkingEnv(AbstractEnv):
             },
             "simulation_frequency": 30, 
             "policy_frequency": 5,
-            "duration": 200, 
+            "duration": 200,  
             "screen_width": 800,
             "screen_height": 600,
             "centering_position": [0.5, 0.5],
@@ -57,14 +58,14 @@ class ParallelParkingEnv(AbstractEnv):
         super().__init__(config, render_mode)
 
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(10,), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(14,), dtype=np.float32
         )
     
     def _define_parking_slots(self):
         spacing = 7.5
         for i in range(4):
             slot_num = i + 1
-            x_pos = -12 + i * spacing
+            x_pos = -12 + i * spacing  
             self.parking_slots[slot_num] = {
                 'position': np.array([x_pos, 10]),
                 'heading': np.pi,
@@ -98,6 +99,7 @@ class ParallelParkingEnv(AbstractEnv):
         super().reset(seed=seed, options=options)
         obs = self._compute_observation()
         info = self._info(obs, None)
+        
         return obs, info
 
     def step(self, action):
@@ -112,31 +114,40 @@ class ParallelParkingEnv(AbstractEnv):
         is_out_of_bounds = (x < -40 or x > 40 or y < -20 or y > 20)
         
         gx, gy = self.goal[0], self.goal[1]
-        dx = abs(x - gx)
-        dy = abs(y - gy)
-        
-        # Matches Trainer logic (Distance < 1.0)
+        dx = x - gx
+        dy = y - gy
         dist_to_goal = np.linalg.norm([dx, dy])
-        is_success = (dist_to_goal < 1.0) 
-
-        # We first want the agent to learn to GO to the spot.ss
         
-        terminated = is_crashed or is_out_of_bounds or is_success
+        current_position = np.array([x, y])
+        self.last_position = current_position.copy()
+        
+        heading_diff = self.vehicle.heading - self.goal[2]
+        heading_diff = (heading_diff + np.pi) % (2 * np.pi) - np.pi
+        
+        dx_tolerance = 3.0   
+        dy_tolerance = 0.75
+        
+        dx_slot = abs(x - gx)  
+        dy_slot = abs(y - gy)  
+        
+        is_in_box = (dx_slot <= dx_tolerance) and (dy_slot <= dy_tolerance)
+        is_aligned = abs(heading_diff) < 0.4 
+        
+        is_success = is_in_box and is_aligned
+
+        terminated = is_success or is_crashed or is_out_of_bounds
         truncated = self.time >= self.config["duration"]
 
-        # A) Base Penalty (Leaky Bucket)
-        reward = -0.15
+        reward = -0.01
+        reward -= dist_to_goal * 0.05 
+        reward -= abs(heading_diff) * 2.0
+        reward += (0.4 - abs(heading_diff)) * 0.1
         
-        # B) Distance Reward
-        normalised_distance = min(dist_to_goal / 50.0, 1.0)
-        reward += (1.0 - normalised_distance) * 0.1
-        
-        # C) Success / Crash Rewards
         if is_success:
-            reward += 50.0
+            reward += 100.0
         
         if is_crashed or is_out_of_bounds:
-            reward = -40.0
+            reward = -50.0
 
         info = self._info(obs, action)
         info['is_success'] = is_success 
@@ -147,10 +158,7 @@ class ParallelParkingEnv(AbstractEnv):
 
     def _compute_observation(self):
         v = self.vehicle
-        raw_state = np.array([
-            v.position[0], v.position[1], v.heading,
-            v.speed, v.action['steering']
-        ], dtype=np.float32)
+        raw_state = np.array([v.position[0], v.position[1], v.heading, v.speed, v.action['steering']], dtype=np.float32)
 
         dx = self.goal[0] - raw_state[0]
         dy = self.goal[1] - raw_state[1]
@@ -162,18 +170,56 @@ class ParallelParkingEnv(AbstractEnv):
         rel_y = -dx * sin_h + dy * cos_h
         rel_theta = (self.goal[2] - raw_state[2] + np.pi) % (2 * np.pi) - np.pi
 
-        # --- NORMALISE OBSERVATIONS ---
+        lidar = np.array([20.0, 20.0, 10.0, 10.0], dtype=np.float32) 
+        
+        for other in self.road.vehicles:
+            if other is v: continue
+            
+            # Vector to other vehicle (Global)
+            d_glob_x = other.position[0] - raw_state[0]
+            d_glob_y = other.position[1] - raw_state[1]
+            
+            # Rotate to Ego Frame
+            d_loc_x = d_glob_x * cos_h + d_glob_y * sin_h
+            d_loc_y = -d_glob_x * sin_h + d_glob_y * cos_h
+            
+            dist = np.linalg.norm([d_loc_x, d_loc_y])
+            if dist > 20.0: continue
+
+            safety_margin = 0.3
+            
+            if d_loc_x > 0 and abs(d_loc_y) < 2.0:
+                dist = max(0.0, d_loc_x - safety_margin)
+                lidar[0] = min(lidar[0], dist)
+            
+            if d_loc_x < 0 and abs(d_loc_y) < 2.0:
+                dist = max(0.0, abs(d_loc_x) - safety_margin)
+                lidar[1] = min(lidar[1], dist)
+                
+            if abs(d_loc_x) < 4.0: 
+                if d_loc_y > 0: 
+                    dist = max(0.0, d_loc_y - safety_margin)
+                    lidar[2] = min(lidar[2], dist)
+                else:           
+                    dist = max(0.0, abs(d_loc_y) - safety_margin)
+                    lidar[3] = min(lidar[3], dist)
+
+        # 3. Assemble State (14 Dims)
         obs = np.array([
-            rel_x / 30.0,          # Normalised Rel X
-            rel_y / 30.0,          # Normalised Rel Y
+            rel_x / 50.0,          
+            rel_y / 50.0,          
             rel_theta / np.pi,     
-            raw_state[0] / 30.0,   
-            raw_state[1] / 20.0,   
+            raw_state[0] / 50.0,    
+            raw_state[1] / 50.0,   
             raw_state[2] / np.pi,  
-            raw_state[3] / 10.0,   
+            raw_state[3] / 2.0,
             raw_state[4],          
-            self.goal[0] / 30.0,   # Normalised Goal X
-            self.goal[1] / 20.0    # Normalised Goal Y
+            self.goal[0] / 50.0,   
+            self.goal[1] / 50.0,
+            lidar[0] / 20.0,        # Sensor: Front
+            lidar[1] / 20.0,        # Sensor: Rear
+            lidar[2] / 10.0,        # Sensor: Left
+            lidar[3] / 10.0         # Sensor: Right
         ], dtype=np.float32)
         
         return obs
@@ -234,7 +280,7 @@ class ParallelParkingEnv(AbstractEnv):
         max_attempts = 50
         min_distance_to_parked = 5.0
         
-        for attempt in range(max_attempts):
+        for _ in range(max_attempts):
             dist_to_goal = self.np_random.uniform(8.0, 15.0)
             spawn_side = self.np_random.choice([-1, 1]) 
             

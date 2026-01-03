@@ -3,7 +3,8 @@ import numpy as np
 
 class ReplayBuffer:
     """
-   Replay Buffer for storing and sampling transitions - HER implemented in training loop (trainer.py).
+    Replay buffer for storing and sampling transitions.
+    Hindsight Experience Replay (HER) is implemented in the training loop (trainer.py).
     """
 
     def __init__(self, capacity: int, state_dim: int, action_dim: int):
@@ -11,7 +12,7 @@ class ReplayBuffer:
         self.state_dim = state_dim
         self.action_dim = action_dim
 
-        # Buffer structure: Each key holds an array with a fixed capacity to store respective elements of transitions
+        # Buffer structure: each key holds an array with fixed capacity
         self.buffer = {
             "states": np.zeros((capacity, state_dim), dtype=np.float32),
             "actions": np.zeros((capacity, action_dim), dtype=np.float32),
@@ -23,18 +24,11 @@ class ReplayBuffer:
         self.size = 0
         self.pointer = 0
 
-    def add(
-        self,
-        state: np.ndarray,
-        action: np.ndarray,
-        reward: float,
-        next_state: np.ndarray,
-        done: bool,
-    ) -> None:
+    def add(self, state: np.ndarray, action: np.ndarray, reward: float, next_state: np.ndarray, done: bool) -> None:
         """
         Store a transition in the buffer.
         """
-        index = self.pointer % self.capacity # Circular buffer. for example, if capacity=1000, after 1000 additions, start overwriting from index 0
+        index = self.pointer % self.capacity  # Circular buffer logic
         self.buffer["states"][index] = state
         self.buffer["actions"][index] = action
         self.buffer["rewards"][index] = reward
@@ -46,11 +40,11 @@ class ReplayBuffer:
 
     def sample(self, batch_size: int) -> dict:
         """
-        Sample a batch of transitions
+        Sample a batch of transitions from the buffer.
         """
         # Ensure we don't sample more than available
         sample_size = min(batch_size, self.size)
-        replace = sample_size > self.size 
+        replace = sample_size > self.size  # Sampling with replacement if needed
         
         indices = np.random.choice(self.size, size=sample_size, replace=replace)
         batch = {

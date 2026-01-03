@@ -4,16 +4,15 @@ import torch.nn as nn
 
 class Actor(nn.Module):
     """
-    Maps state (including goal) -> continuous action.
+    Maps state (including goal) to continuous action.
     """
 
     def __init__(self, state_dim: int, action_dim: int, max_action: torch.Tensor, hidden_dim: int) -> None:
         super().__init__()
-        self.state_dim = state_dim # Input dimension (state + goal)
-        self.action_dim = action_dim # Output dimension (action)
-        self.max_action = max_action # Maximum action value (for scaling - used in forward pass)
-        
-        self.network = nn.Sequential( # state_dim -> 400 (hidden layer size) -> 400 -> action_dim
+        self.state_dim = state_dim 
+        self.action_dim = action_dim 
+        self.max_action = max_action 
+        self.network = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.ReLU(),
@@ -28,5 +27,5 @@ class Actor(nn.Module):
         """
         Forward pass through the actor network.
         """
-        action = self.network(state)
-        return action * self.max_action
+        x = self.network(state)  # Pass through layers
+        return x * self.max_action

@@ -5,7 +5,6 @@ import sys
 import time
 from datetime import datetime
 
-# Add the root directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from ddpg.ddpg_agent import DDPGAgent
@@ -15,13 +14,14 @@ from env import parallel_lot
 
 class Trainer:
     """
-    Handles environment interaction and training loop - handles HER logic.
+    Handles environment interaction and training loop.
+    Implements Hindsight Experience Replay (HER) logic.
     """
 
     def __init__(self, parking_env: parallel_lot.ParallelParkingEnv, agent: DDPGAgent) -> None:
         self.parking_env = parking_env
         self.agent = agent
-        self.future_k = 4  # Number of future steps to sample for HER - Used in the replay buffer sampling and is an empirical choice
+        self.future_k = 4  # Num future samples for HER
 
         obs, _ = self.parking_env.reset()
 
@@ -36,39 +36,46 @@ class Trainer:
 
         self.best_success_rate = 0.0
         self.best_crash_rate = 100.0
+        
+        self.best_combined_score = -np.inf  
+        self.best_success_models = {}
+        self.best_safety_models = {}
 
     def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray) -> float:
-        """
-        Compute reward based on distance to goal + main tuning components.
-        """
-        distance = np.linalg.norm(achieved_goal - desired_goal)
+        dx = abs(achieved_goal[0] - desired_goal[0])
+        dy = abs(achieved_goal[1] - desired_goal[1])
+        heading_diff = achieved_goal[2] - desired_goal[2]
+        heading_diff = (heading_diff + np.pi) % (2 * np.pi) - np.pi
+
+        reward = -0.01
+        dist = np.linalg.norm(achieved_goal[:2] - desired_goal[:2])
+        reward -= dist * 0.05
         
-        reward = -0.15 # Base penalty
+        reward -= abs(heading_diff) * 2.0
+        reward += (0.4 - abs(heading_diff)) * 0.1  # Bonus for being close to alignment
         
-        normalised_distance = min(distance / 50.0, 1.0)
+        is_in_box = (dx <= 3.0) and (dy <= 0.75)
+        is_aligned = abs(heading_diff) < 0.4 
         
-        reward += (1.0 - normalised_distance) * 0.1 
-        
-        if distance < 1.0:
-            reward += 50.0
+        if is_in_box and is_aligned:
+            reward += 100.0  # Success bonus
             
-        return reward
+        return max(reward, -50.0)
 
     def replace_goal_in_state(self, state: np.ndarray, new_goal: np.ndarray, achieved_goal: np.ndarray) -> np.ndarray:
         """
         Replace goal positions and relative positions for HER.
-        new_goal and achieved_goal are now both 2D (x, y).
         """
         modified_state = state.copy()
         
-        # 1. Update Goal Absolute Coordinates (Indices -2, -1)
-        modified_state[-2] = new_goal[0] / 30.0
-        modified_state[-1] = new_goal[1] / 20.0
+        # Update goal absolute coordinates
+        modified_state[8] = new_goal[0] / 50.0
+        modified_state[9] = new_goal[1] / 50.0
 
-        # 2. Get car heading from state (normalised value * pi)
+        # Get car heading from state
         car_heading = state[5] * np.pi
         
-        # 3. Update Relative Position (Indices 0, 1)
+        # Update relative position (transform to car frame)
         car_x, car_y = achieved_goal[0], achieved_goal[1]
         
         rel_x_world = new_goal[0] - car_x
@@ -77,66 +84,94 @@ class Trainer:
         cos_t = np.cos(car_heading)
         sin_t = np.sin(car_heading)
         
-        # Rotate world difference into car frame
-        modified_state[0] = (rel_x_world * cos_t + rel_y_world * sin_t) / 30.0
-        modified_state[1] = (-rel_x_world * sin_t + rel_y_world * cos_t) / 30.0
+        modified_state[0] = (rel_x_world * cos_t + rel_y_world * sin_t) / 50.0
+        modified_state[1] = (-rel_x_world * sin_t + rel_y_world * cos_t) / 50.0
         
-        # Note: Relative heading (index 2) stays the same since we're only changing position goals
+        new_rel_theta = new_goal[2] - car_heading
+        
+        # Normalise to [-pi, pi]
+        new_rel_theta = (new_rel_theta + np.pi) % (2 * np.pi) - np.pi
+        
+        modified_state[2] = new_rel_theta / np.pi
 
         return modified_state
 
     def get_achieved_goal(self, state: np.ndarray) -> np.ndarray:
         """
-        Get Agent's current position (X, Y) - consistent 2D for HER.
+        Get Agent's current position (X, Y, Theta).
         """
-        x = state[3] * 30.0
-        y = state[4] * 20.0
-        return np.array([x, y], dtype=np.float32)
+        x = state[3] * 50.0
+        y = state[4] * 50.0
+        theta = state[5] * np.pi
+        return np.array([x, y, theta], dtype=np.float32)
   
     def get_desired_goal(self, state: np.ndarray) -> np.ndarray:
-       """
-       Get target parking spot (X,Y) - consistent 2D for HER.
-       Indices [-2] and [-1] are Goal X, Goal Y normalised by 30 and 20.
-       """
-       x = state[-2] * 30.0
-       y = state[-1] * 20.0
-       return np.array([x, y], dtype=np.float32)
+        """
+        Get target parking spot (X, Y, Theta).
+        """
+        x = state[8] * 50.0
+        y = state[9] * 50.0
+        
+        current_theta = state[5] * np.pi
+        rel_theta = state[2] * np.pi
+        theta = current_theta + rel_theta
+        
+        return np.array([x, y, theta], dtype=np.float32)
 
     def print_episode_summary(self, episode: int, print_every: int) -> None:
         if (episode + 1) % print_every == 0:
             avg_reward = np.mean(self.episode_rewards[-print_every:])
             avg_length = np.mean(self.episode_lengths[-print_every:])
             
-            # Convert to percentages for easier reading
             success_rate = np.mean(self.success_history[-print_every:]) * 100
             crash_rate = np.mean(self.crash_history[-print_every:]) * 100
             
-            min_success = 50.0
-            max_crash = 20.0
+            combined_score = success_rate - crash_rate
             
-            # Dynamic model saving criteria so that we only save significantly improved models
-            is_valid_model = (success_rate >= min_success and crash_rate <= max_crash)
-            improved_success = (success_rate >= self.best_success_rate + 5.0)
-            improved_safety = (crash_rate <= self.best_crash_rate - 5.0 and success_rate >= self.best_success_rate)
-
-            if is_valid_model and (improved_success or improved_safety):
-                self.best_success_rate = max(success_rate, self.best_success_rate)
-                if crash_rate < self.best_crash_rate:
-                    self.best_crash_rate = crash_rate
-                    
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            results_dir = os.path.join(project_root, "results/parallel_parking")
+            os.makedirs(results_dir, exist_ok=True)
+            
+            saved_model = False
+            save_reasons = []  # Why we're saving the model
+            
+            if combined_score > self.best_combined_score:
+                self.best_combined_score = combined_score
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                save_path = f"results/parallel_parking/best_ddpg_model_success_{success_rate:.1f}_crash_{crash_rate:.1f}_{timestamp}.pth"
+                filename = f"OPTIMAL_success_{success_rate:.1f}_crash_{crash_rate:.1f}_{timestamp}.pth"
+                save_path = os.path.join(results_dir, filename)
                 self.agent.save(save_path)
-                print(f"New best model saved! Success: {success_rate:.1f}% | Crash: {crash_rate:.1f}%")
-
-            print(
-                f"Episode {episode + 1:4d} | "
-                f"Reward: {avg_reward:7.2f} | "
-                f"Success: {success_rate:3.0f}% | "
-                f"Crash: {crash_rate:3.0f}% | "
-                f"Steps: {avg_length:5.1f} | "
-                f"Noise: {self.agent.noise_scale:.3f}"
-            )
+                save_reasons.append(f"OPTIMAL (score: {combined_score:.1f})")
+                saved_model = True
+            
+            if success_rate >= 70.0:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"HIGH_SUCCESS_success_{success_rate:.1f}_crash_{crash_rate:.1f}_{timestamp}.pth"
+                save_path = os.path.join(results_dir, filename)
+                self.agent.save(save_path)
+                save_reasons.append(f"HIGH_SUCCESS (>70%)")
+                saved_model = True
+            
+            if crash_rate <= 20.0 and success_rate >= 50.0:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"SAFE_success_{success_rate:.1f}_crash_{crash_rate:.1f}_{timestamp}.pth"
+                save_path = os.path.join(results_dir, filename)
+                self.agent.save(save_path)
+                save_reasons.append(f"SAFE (crash<20%)")
+                saved_model = True
+            
+            if success_rate >= 60.0 and crash_rate <= 30.0:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"MILESTONE_success_{success_rate:.1f}_crash_{crash_rate:.1f}_{timestamp}.pth"
+                save_path = os.path.join(results_dir, filename)
+                self.agent.save(save_path)
+                save_reasons.append(f"MILESTONE (60%+ success, 30%- crash)")
+                saved_model = True
+            
+            if saved_model:
+                print(f"Model saved [{', '.join(save_reasons)}]")  # Notify user of save
+            
+            print(f"Ep {episode + 1:4d} | R: {avg_reward:7.2f} | S: {success_rate:5.1f}% | C: {crash_rate:5.1f}% | Score: {combined_score:6.1f} | Steps: {avg_length:5.1f} | Noise: {self.agent.noise_scale:.3f}")
 
     def train(
         self,
@@ -158,7 +193,7 @@ class Trainer:
             self.agent.noise.reset()
             episode_reward = 0
             episode_steps = 0
-            episode_cache = []  # To store transitions for HER
+            episode_cache = []  # Store transitions
 
             for _ in range(max_steps_per_episode):
                 action = self.agent.select_action(state, noise=True)
@@ -195,21 +230,19 @@ class Trainer:
             self.episode_lengths.append(episode_steps)
 
             is_success = info.get('is_success', False)
-            is_crash = info.get('is_crash', False) or info.get('is_out_of_bounds', False)
+            is_crash = info.get('is_crash', False) or info.get('is_out_of_bounds', False)  # Check crash or bounds
 
             self.success_history.append(is_success)
             self.crash_history.append(is_crash)
 
             self.print_episode_summary(episode, print_every)
 
-    # method to store episode with HER
+    # Method to store episode with HER
     def store_episode(self, episode_cache: List[tuple]) -> None:
         cache_size = len(episode_cache)
         for idx, (state, action, reward, next_state, done, info) in enumerate(episode_cache):
-            # 1. Store the REAL experience (with the -40 crash penalty)
             self.replay_buffer.add(state, action, reward, next_state, done)
 
-            # 2. HER Logic (Hindsight Experience Replay) below
             available_future = cache_size - idx - 1
             if available_future > 0:
                 num_samples = min(self.future_k, available_future)
@@ -219,7 +252,7 @@ class Trainer:
                     future_state, _, _, _, _, future_info = episode_cache[future_idx]
                     
                     if future_info.get('is_crash', False) or future_info.get('is_out_of_bounds', False):
-                        continue
+                        continue  # Skip if future state is bad
 
                     new_goal = self.get_achieved_goal(future_state)
                     
