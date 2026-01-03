@@ -138,16 +138,13 @@ class ParallelParkingEnv(AbstractEnv):
         terminated = is_success or is_crashed or is_out_of_bounds
         truncated = self.time >= self.config["duration"]
 
-        reward = -0.01
-        reward -= dist_to_goal * 0.05 
-        reward -= abs(heading_diff) * 2.0
-        reward += (0.4 - abs(heading_diff)) * 0.1
-        
+        # Sparse reward function for HER
         if is_success:
-            reward += 100.0
-        
-        if is_crashed or is_out_of_bounds:
-            reward = -50.0
+            reward = 1.0
+        elif is_crashed or is_out_of_bounds:
+            reward = -1.0
+        else:
+            reward = -0.01
 
         info = self._info(obs, action)
         info['is_success'] = is_success 

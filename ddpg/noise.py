@@ -14,7 +14,6 @@ class OUNoise:
         self.state = np.ones(self.action_dim) * self.mu
 
     def sample(self):
-        dx = self.theta * (self.mu - self.state) * self.dt + \
-             self.sigma * np.sqrt(self.dt) * np.random.randn(len(self.state))
+        dx = self.theta * (self.mu - self.state) * self.dt + self.sigma * np.sqrt(self.dt) * np.random.randn(len(self.state))
         self.state = self.state + dx
         return self.state

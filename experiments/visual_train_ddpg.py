@@ -162,7 +162,6 @@ def visual_training_demo(resume=False):
             
             trainer.store_episode(episode_cache)
 
-            # Train agent with 1:1 step-to-training ratio
             if total_steps >= warmup_steps and len(trainer.replay_buffer) > batch_size:
                 for _ in range(episode_steps):
                     agent.train(trainer.replay_buffer, batch_size)  # Gradient updates

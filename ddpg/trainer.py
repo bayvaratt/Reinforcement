@@ -42,25 +42,24 @@ class Trainer:
         self.best_safety_models = {}
 
     def compute_reward(self, achieved_goal: np.ndarray, desired_goal: np.ndarray) -> float:
+        """
+        Sparse reward function for HER:
+        - +1.0 if goal is achieved (in parking spot and aligned)
+        - -0.01 small step penalty to encourage efficiency
+        """
         dx = abs(achieved_goal[0] - desired_goal[0])
         dy = abs(achieved_goal[1] - desired_goal[1])
         heading_diff = achieved_goal[2] - desired_goal[2]
         heading_diff = (heading_diff + np.pi) % (2 * np.pi) - np.pi
 
-        reward = -0.01
-        dist = np.linalg.norm(achieved_goal[:2] - desired_goal[:2])
-        reward -= dist * 0.05
-        
-        reward -= abs(heading_diff) * 2.0
-        reward += (0.4 - abs(heading_diff)) * 0.1  # Bonus for being close to alignment
-        
+        # Check if goal is achieved
         is_in_box = (dx <= 3.0) and (dy <= 0.75)
         is_aligned = abs(heading_diff) < 0.4 
         
         if is_in_box and is_aligned:
-            reward += 100.0  # Success bonus
-            
-        return max(reward, -50.0)
+            return 1.0  # Sparse positive reward for success
+        else:
+            return -0.01  # Small step penalty to encourage efficiency
 
     def replace_goal_in_state(self, state: np.ndarray, new_goal: np.ndarray, achieved_goal: np.ndarray) -> np.ndarray:
         """
@@ -171,7 +170,7 @@ class Trainer:
             if saved_model:
                 print(f"Model saved [{', '.join(save_reasons)}]")  # Notify user of save
             
-            print(f"Ep {episode + 1:4d} | R: {avg_reward:7.2f} | S: {success_rate:5.1f}% | C: {crash_rate:5.1f}% | Score: {combined_score:6.1f} | Steps: {avg_length:5.1f} | Noise: {self.agent.noise_scale:.3f}")
+            print(f"Episode {episode + 1:4d} | Reward: {avg_reward:7.2f} | Success Rate: {success_rate:5.1f}% | Crash Rate: {crash_rate:5.1f}% | Score: {combined_score:6.1f} | Steps: {avg_length:5.1f} | Noise: {self.agent.noise_scale:.3f}")
 
     def train(
         self,
