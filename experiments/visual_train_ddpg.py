@@ -22,43 +22,48 @@ from ddpg.ddpg_agent import DDPGAgent
 from ddpg.trainer import Trainer
 from env.parallel_lot import ParallelParkingEnv
 
-
 def visual_training_demo(resume=False, use_her=True):
     """
-    Visual training demo that saves real training data to a CSV file for plotting.
-    Includes logic to append to existing logs if resuming.
+    ACADEMIC TRAINING (Code A) + VISUAL RENDERING ADDED.
+    Optimization: Reduced evaluation freq & gradient updates for speed.
     """
     import pandas as pd 
 
-    print("=" * 80)
-    print("VISUAL DDPG TRAINING - PARALLEL PARKING")
-    print("=" * 80)
+    # --- VISUAL SETTINGS ---
 
-    print("\nGoal: Train agent to park between other cars")
-    print("Display: Visual rendering shows agent movements")
-    print("Feedback: Episode rewards and success rates in terminal")
-    print("Speed: Renders every 10 steps for smooth viewing")
-    print("Warmup: First 5000 steps are random to fill buffer\n")
+    render_every_n_steps = 0   
+    render_delay = 0.0          
+    
+    # Determine render mode based on settings
+    mode_str = "human" if render_every_n_steps > 0 else None
+
+    # 1. Setup Filenames
+    if use_her:
+        log_filename = "training_log.csv"
+        model_filename = "ddpg_agent_final.pth"
+        mode_title = "WITH HER (FAST MODE)"
+    else:
+        log_filename = "training_log_no_her.csv"
+        model_filename = "ddpg_agent_no_her.pth"
+        mode_title = "NO HER (BASELINE)"
+
+    print("=" * 80)
+    print(f"ACADEMIC DDPG TRAINING - {mode_title}")
+    print(f"Rendering: {'ENABLED' if mode_str else 'DISABLED'} (Every {render_every_n_steps} steps)")
+    print("=" * 80)
+    print("Optimization: Reduced evaluation freq & gradient updates for speed.")
+    print(f"Saving logs to: {log_filename}")
 
     episodes_to_run = 2000            
     max_episode_steps = 200    
-    batch_size = 256               
-    render_every_n_steps = 0     
-    render_delay = 0.0             
-    print_every = 10  
-    
-    if use_her:
-        log_filename = "training_log.csv"
-        mode_title = "WITH HER"
-    else:
-        log_filename = "training_log_no_her.csv"
-        mode_title = "NO HER (BASELINE)"            
-        
-    print("=" * 80)
-    print(f"VISUAL DDPG TRAINING - {mode_title}")
-    print("=" * 80)
-    print(f"Saving logs to: {log_filename}")
+    batch_size = 256
 
+    # Evaluate every 50 episodes (No noise)
+    eval_interval = 50      # Train for 50 eps
+    eval_episodes = 10      # Test for 10 eps
+    
+    updates_per_step = 1 
+    
     warmup_steps = 5000           
     if resume:
         warmup_steps = 0
@@ -68,195 +73,176 @@ def visual_training_demo(resume=False, use_her=True):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    print("\n[1/3] Initialising parallel parking environment...")
-    parking_env = ParallelParkingEnv(config={}, render_mode=None)
+    # Environments
+    print("[1/3] Initialising environments...")
+    # MODIFIED: Pass the determined render_mode here
+    train_env = ParallelParkingEnv(config={}, render_mode=mode_str)
+    eval_env = ParallelParkingEnv(config={}, render_mode=None) # Keep eval headless for speed
 
-    obs, info = parking_env.reset()
+    # Agent
+    print("[2/3] Setting up DDPG agent...")
+    obs, info = train_env.reset()
     state_dim = obs.shape[0]
-    action_dim = parking_env.action_space.shape[0]
+    action_dim = train_env.action_space.shape[0]
     max_action = np.array([np.pi / 4, 1.0])
 
-    print("  Environment ready with visual rendering")
-    print(f"    - Goal slot: {info.get('goal_slot', 'N/A')} (look for striped markings)")
-    print(f"    - Parked cars: {info.get('num_parked_cars', 'N/A')}")
-    print(f"    - Max action bounds: {max_action}")
+    agent = DDPGAgent(state_dim, action_dim, max_action, device=device)
+    trainer = Trainer(train_env, agent, use_her=use_her)
 
-    # Set up DDPG agent
-    print("\n[2/3] Setting up DDPG agent...")
-    agent = DDPGAgent(
-        state_dim=state_dim,
-        action_dim=action_dim,
-        max_action=max_action,
-        discount_factor=0.99,
-        soft_update_factor=0.001,
-        device=device
-    )
-    print("  Agent ready with exploration noise")
-    print(f"    - Starting noise scale: {agent.noise_scale}")
-
-    print("\n[3/3] Beginning visual training...")
-    trainer = Trainer(parking_env, agent, use_her=use_her)
-    
-    # --- SETUP LOGGING ---
-    training_log = [] 
+    # Logging & Resuming
+    training_log = []
     log_path = os.path.join(RESULTS_DIR, log_filename)
     
-    if resume:
-        model_input = input("Enter the model file name or path to resume from (e.g., ddpg_agent_final.pth): ").strip()
-        
-        if os.path.isabs(model_input):
-            load_path = model_input
-        else:
-            if model_input.startswith("results/parallel_parking/"):
-                load_path = os.path.join(PROJECT_ROOT, model_input)
-            else:
-                load_path = os.path.join(RESULTS_DIR, model_input)
-        
-        if not load_path.endswith(".pth"):
-            load_path = f"{load_path}.pth"
-        
-        if os.path.exists(load_path):
-            print(f"Resuming training: Loading model from {load_path}")
-            agent.load(load_path)
-            agent.noise_scale = 0.05 
-            for param_group in agent.actor_optimiser.param_groups:
-                param_group['lr'] = 1e-5
-            for param_group in agent.critic_optimiser.param_groups:
-                param_group['lr'] = 2e-5
-                
-            trainer.best_success_rate = 60.0
-            print("Learning rates adjusted for fine-tuning")
+    if resume and os.path.exists(log_path):
+        try:
+            df_existing = pd.read_csv(log_path)
+            training_log = df_existing.to_dict('records')
+            print(f"Resumed log: {len(training_log)} entries.")
+        except Exception as e:
+            print(f"Warning: Could not load log: {e}")
 
-            # --- NEW: Load Previous CSV Data ---
-            if os.path.exists(log_path):
-                try:
-                    df_existing = pd.read_csv(log_path)
-                    training_log = df_existing.to_dict('records')
-                    print(f"Resumed log: Loaded {len(training_log)} previous episodes.")
-                except Exception as e:
-                    print(f"Warning: Could not load previous log: {e}")
-        else:
-            print(f"{load_path} not found. Starting from scratch!")
-   
-    print(f"  Trainer ready")
-    print(f"    - Rendering every {render_every_n_steps} steps")
-    print(f"    - Warmup phase: {warmup_steps} steps")
-    print(f"    - Logging data to: {log_path}")
+    if resume:
+        load_path = os.path.join(RESULTS_DIR, model_filename)
+        if os.path.exists(load_path):
+            agent.load(load_path)
+            agent.noise_scale = 0.05
+            print(f"Weights loaded from {model_filename}")
+
+    total_steps = 0
+    start_cycle = len(training_log) 
+    total_cycles = episodes_to_run // eval_interval
+    global_episode = start_cycle * eval_interval 
 
     print("\n" + "=" * 80)
     print("TRAINING STARTED")
     print("=" * 80 + "\n")
 
-    total_steps = 0
-
     try:
-        # Loop starts from the end of the loaded log
-        start_episode = len(training_log)
-        
-        for episode in range(start_episode, start_episode + episodes_to_run):
-            obs, _ = parking_env.reset()
-            state = obs
+        for cycle in range(start_cycle, total_cycles):
             
-            agent.noise.reset()
-            episode_reward = 0
-            episode_steps = 0
-            episode_cache = []
+            # --- PHASE 1: TRAINING ---
+            # Rolling stats for terminal output
+            train_rewards = []
+            train_successes = []
+            train_crashes = []
+            train_steps = []
 
-            for _ in range(max_episode_steps):
-                if total_steps < warmup_steps:
-                    action = parking_env.action_space.sample()
-                else:
-                    action = agent.select_action(state, noise=True)
+            for _ in range(eval_interval):
+                global_episode += 1
+                
+                obs, _ = train_env.reset()
+                state = obs
+                agent.noise.reset()
+                episode_steps = 0
+                episode_reward = 0
+                episode_cache = []
 
-                next_obs, reward, terminated, truncated, info = parking_env.step(action)
-                next_state = next_obs
-                done = terminated or truncated
+                for _ in range(max_episode_steps):
+                    if total_steps < warmup_steps:
+                        action = train_env.action_space.sample()
+                    else:
+                        action = agent.select_action(state, noise=True)
 
-                episode_cache.append((state, action, reward, next_state, done, info))
+                    next_obs, reward, terminated, truncated, info = train_env.step(action)
+                    done = terminated or truncated
+                    episode_cache.append((state, action, reward, next_obs, done, info))
+                    
+                    # --- NEW RENDERING LOGIC ---
+                    if render_every_n_steps > 0 and total_steps % render_every_n_steps == 0:
+                        train_env.render()
+                        if render_delay > 0:
+                            time.sleep(render_delay)
+                    # ---------------------------
 
-                state = next_state
-                episode_reward += reward
-                episode_steps += 1
-                total_steps += 1
+                    state = next_obs
+                    episode_reward += reward
+                    episode_steps += 1
+                    total_steps += 1
+                    if done: break
+                
+                trainer.store_episode(episode_cache)
+                
+                # Update stats lists
+                is_success = info.get('is_success', False)
+                is_crash = info.get('is_crash', False) or info.get('is_out_of_bounds', False)
+                train_rewards.append(episode_reward)
+                train_successes.append(1 if is_success else 0)
+                train_crashes.append(1 if is_crash else 0)
+                train_steps.append(episode_steps)
 
-                if render_every_n_steps > 0 and episode_steps % render_every_n_steps == 0:
-                    parking_env.render()
-                    if render_delay > 0:
-                        time.sleep(render_delay)
+                # --- OPTIMIZED UPDATE LOOP ---
+                if total_steps >= warmup_steps and len(trainer.replay_buffer) > batch_size:
+                    n_updates = int(episode_steps * updates_per_step)
+                    for _ in range(n_updates):
+                        agent.train(trainer.replay_buffer, batch_size)
+                
+                agent.noise_scale = max(0.02, agent.noise_scale * 0.9995)
+                
+                # --- PRINT EVERY 10 EPISODES ---
+                if global_episode % 10 == 0:
+                    avg_reward = np.mean(train_rewards[-10:])
+                    success_rate = np.mean(train_successes[-10:]) * 100
+                    crash_rate = np.mean(train_crashes[-10:]) * 100
+                    avg_len = np.mean(train_steps[-10:])
+                    score = success_rate - crash_rate
 
-                if done:
-                    break
+                    print(f"Episode {global_episode:4d} | Reward: {avg_reward:7.2f} | Success Rate: {success_rate:5.1f}% | Crash Rate: {crash_rate:5.1f}% | Score: {score:6.1f} | Steps: {avg_len:5.1f} | Noise: {agent.noise_scale:.3f}")
+
+            # --- PHASE 2: EVALUATION (Runs without rendering to save time) ---
+            eval_stats = {'reward': 0, 'success': 0, 'crash': 0, 'steps': 0}
             
-            trainer.store_episode(episode_cache)
-
-            if total_steps >= warmup_steps and len(trainer.replay_buffer) > batch_size:
-                for _ in range(episode_steps):
-                    agent.train(trainer.replay_buffer, batch_size)
-
-            agent.noise_scale = max(0.02, agent.noise_scale * 0.998)
-
-            trainer.episode_rewards.append(episode_reward)
-            trainer.episode_lengths.append(episode_steps)
-
-            is_success = info.get('is_success', False)
-            is_crash = info.get('is_crash', False) or info.get('is_out_of_bounds', False)
+            for _ in range(eval_episodes):
+                obs, _ = eval_env.reset()
+                state = obs
+                done = False
+                ep_reward = 0
+                ep_steps = 0
+                while not done:
+                    action = agent.select_action(state, noise=False)
+                    state, reward, terminated, truncated, info = eval_env.step(action)
+                    done = terminated or truncated
+                    ep_reward += reward
+                    ep_steps += 1
+                
+                eval_stats['reward'] += ep_reward
+                eval_stats['steps'] += ep_steps
+                if info.get('is_success', False): eval_stats['success'] += 1
+                if info.get('is_crash', False) or info.get('is_out_of_bounds', False): eval_stats['crash'] += 1
             
-            trainer.success_history.append(is_success)
-            trainer.crash_history.append(is_crash)
-
-            # --- Save Data to Log List ---
+            # Averages
+            avg_reward = eval_stats['reward'] / eval_episodes
+            success_rate = (eval_stats['success'] / eval_episodes) * 100
+            crash_rate = (eval_stats['crash'] / eval_episodes) * 100
+            avg_steps = eval_stats['steps'] / eval_episodes
+            
+            # --- SAVE LOGS ---
             training_log.append({
-                "Episode": episode,
-                "Reward": episode_reward,
-                "Success": 1 if is_success else 0,
-                "Crash": 1 if is_crash else 0,
-                "Steps": episode_steps
+                "Episode": global_episode,
+                "Reward": avg_reward,
+                "Success": success_rate,
+                "Crash": crash_rate,
+                "Steps": avg_steps
             })
+            
+            df = pd.DataFrame(training_log)
+            df = df[['Episode', 'Reward', 'Success', 'Crash', 'Steps']]
+            df.to_csv(log_path, index=False)
+            
+            if cycle % 5 == 0:
+                agent.save(os.path.join(RESULTS_DIR, model_filename))
 
-            # --- Save to CSV every 10 episodes ---
-            if episode % 10 == 0:
-                df = pd.DataFrame(training_log)
-                df.to_csv(log_path, index=False)
-
-            trainer.print_episode_summary(episode, print_every)
-
-        print("\n" + "=" * 80)
-        print("VISUAL TRAINING FINISHED!")
-        
-        # --- Final Save ---
-        df = pd.DataFrame(training_log)
-        df.to_csv(log_path, index=False)
-        print(f"Training data saved to: {log_path}")
-
-        final_model_path = os.path.join(RESULTS_DIR, "ddpg_agent_final.pth")
-        print(f"Final model saved: {final_model_path}")
-        print(f"Best performance: Success {trainer.best_success_rate:.1f}% | Crash {trainer.best_crash_rate:.1f}%")
-        print("=" * 80)
-        agent.save(final_model_path)
+        agent.save(os.path.join(RESULTS_DIR, model_filename))
+        print("Training Finished.")
 
     except KeyboardInterrupt:
-        print("\n\nTraining stopped by user")
-        print("Saving checkpoint and data log...")
-        
-        # --- Save data on interrupt ---
-        df = pd.DataFrame(training_log)
-        df.to_csv(log_path, index=False)
-        print(f"Log saved: {log_path}")
-
-        checkpoint_path = os.path.join(RESULTS_DIR, "ddpg_agent_visual_checkpoint.pth")
-        agent.save(checkpoint_path)
-        print(f"Checkpoint saved: {checkpoint_path}")
-
-    except Exception as e:
-        print(f"\nError during training: {e}")
-        import traceback
-        traceback.print_exc()
+        print("\nInterrupted. Saving data...")
+        agent.save(os.path.join(RESULTS_DIR, model_filename.replace(".pth", "_checkpoint.pth")))
+        pd.DataFrame(training_log).to_csv(log_path, index=False)
+        print("Saved.")
 
     finally:
-        print("\nCleaning up...")
-        parking_env.close()
-        print("Environment closed")
-
+        train_env.close()
+        eval_env.close()
 
 def quick_visual_test():
     """
@@ -387,7 +373,7 @@ def plot_training_results():
         print(f"Loading HER data from {her_path}...")
         df_her = pd.read_csv(her_path)
         # Smoothing window
-        df_her['Success Rate'] = df_her['Success'].rolling(window=50, min_periods=1).mean() * 100
+        df_her['Success Rate'] = df_her['Success'].rolling(window=5, min_periods=1).mean() * 100
         plt.plot(df_her['Episode'], df_her['Success Rate'], label='DDPG + HER (Ours)', color='blue', linewidth=2)
         plt.fill_between(df_her['Episode'], df_her['Success Rate'], alpha=0.1, color='blue')
     else:
@@ -398,7 +384,7 @@ def plot_training_results():
         print(f"Loading Baseline data from {no_her_path}...")
         df_no = pd.read_csv(no_her_path)
         # Smoothing window
-        df_no['Success Rate'] = df_no['Success'].rolling(window=50, min_periods=1).mean() * 100
+        df_no['Success Rate'] = df_no['Success'].rolling(window=5, min_periods=1).mean() * 100
         plt.plot(df_no['Episode'], df_no['Success Rate'], label='Standard DDPG (No HER)', color='red', linewidth=2, linestyle='--')
         plt.fill_between(df_no['Episode'], df_no['Success Rate'], alpha=0.1, color='red')
     else:
