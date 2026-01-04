@@ -361,7 +361,7 @@ def plot_training_results():
     Plots learning curves from CSV logs.
     Auto-detects if data is 0-1 or 0-100 to prevent scaling errors.
     """
-    her_path = os.path.join(RESULTS_DIR, "training_log.csv")
+    her_path = os.path.join(RESULTS_DIR, "training_log_final.csv")
     no_her_path = os.path.join(RESULTS_DIR, "training_log_no_her.csv")
     
     plt.figure(figsize=(10, 6))
@@ -388,7 +388,7 @@ def plot_training_results():
             df_her = pd.read_csv(her_path)
             y_values = process_data(df_her, 'Success', window=5)
             
-            plt.plot(df_her['Episode'], y_values, label='DDPG + HER (Ours)', color='blue', linewidth=2)
+            plt.plot(df_her['Episode'], y_values, label='DDPG + HER', color='blue', linewidth=2)
             plt.fill_between(df_her['Episode'], y_values, alpha=0.1, color='blue')
         except Exception as e:
             print(f"Error reading HER log: {e}")
@@ -425,6 +425,102 @@ def plot_training_results():
     print(f"Comparison graph saved to: {plot_path}")
     plt.show()
 
+def plot_detailed_comparisons():
+    """
+    Generates professional comparative graphs for the report:
+    1. Average Reward: HER (Blue) vs Baseline (Red)
+    2. Episode Length: HER (Blue) vs Baseline (Red)
+    3. Behavior Profile: HER Only (Stacked Area Chart)
+    """
+    her_path = os.path.join(RESULTS_DIR, "training_log_final.csv")
+    no_her_path = os.path.join(RESULTS_DIR, "training_log_no_her.csv")
+    
+    # --- HELPER FUNCTION ---
+    def load_and_smooth(path, window=10):
+        if not os.path.exists(path): return None
+        df = pd.read_csv(path)
+        # Force numeric
+        for c in ['Reward', 'Steps', 'Success', 'Crash']: 
+            if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce')
+        
+        # Smooth
+        df['Reward_Smooth'] = df['Reward'].rolling(window=window).mean()
+        df['Steps_Smooth'] = df['Steps'].rolling(window=window).mean()
+        return df
+
+    df_her = load_and_smooth(her_path)
+    df_no = load_and_smooth(no_her_path)
+
+    # =========================================================
+    # GRAPH 1: REWARD COMPARISON (HER vs Baseline)
+    # =========================================================
+    plt.figure(figsize=(10, 6))
+    plt.grid(True, linestyle='--', alpha=0.6)
+    
+    if df_her is not None:
+        plt.plot(df_her['Episode'], df_her['Reward_Smooth'], color='blue', linewidth=2, label='DDPG + HER')
+        plt.fill_between(df_her['Episode'], df_her['Reward_Smooth'], alpha=0.1, color='blue')
+        
+    if df_no is not None:
+        plt.plot(df_no['Episode'], df_no['Reward_Smooth'], color='red', linewidth=2, linestyle='--', label='Baseline (No HER)')
+    
+    plt.title("Reward Convergence: HER vs Baseline", fontsize=16)
+    plt.xlabel("Episode", fontsize=14)
+    plt.ylabel("Average Reward (Smoothed)", fontsize=14)
+    plt.legend(loc='lower right', fontsize=12)
+    plt.savefig(os.path.join(RESULTS_DIR, "compare_reward.png"), dpi=300)
+    print("Saved: compare_reward.png")
+
+    # =========================================================
+    # GRAPH 2: EFFICIENCY (STEPS) COMPARISON
+    # =========================================================
+    plt.figure(figsize=(10, 6))
+    plt.grid(True, linestyle='--', alpha=0.6)
+    
+    if df_her is not None:
+        plt.plot(df_her['Episode'], df_her['Steps_Smooth'], color='blue', linewidth=2, label='DDPG + HER')
+        
+    if df_no is not None:
+        plt.plot(df_no['Episode'], df_no['Steps_Smooth'], color='red', linewidth=2, linestyle='--', label='Baseline')
+
+    plt.title("Parking Efficiency: Steps to Finish", fontsize=16)
+    plt.xlabel("Episode", fontsize=14)
+    plt.ylabel("Avg Steps", fontsize=14)
+    plt.legend(loc='upper right', fontsize=12)
+    plt.savefig(os.path.join(RESULTS_DIR, "compare_efficiency.png"), dpi=300)
+    print("Saved: compare_efficiency.png")
+
+    # =========================================================
+    # GRAPH 3: BEHAVIOR PROFILE (HER AGENT ONLY)
+    # =========================================================
+    # We only show this for the HER agent to explain "How it learned"
+    if df_her is not None:
+        plt.figure(figsize=(10, 6))
+        
+        # Scaling logic
+        scale = 100 if df_her['Success'].max() <= 1.0 else 1
+        win = 20 # Higher smoothing for area chart
+        
+        s = df_her['Success'].rolling(window=win, min_periods=1).mean() * scale
+        c = df_her['Crash'].rolling(window=win, min_periods=1).mean() * scale
+        t = 100 - (s + c)
+        t = t.clip(lower=0)
+
+        plt.stackplot(df_her['Episode'], s, c, t,
+                      labels=['Success (Parked)', 'Crash', 'Timeout/ Exploring'],
+                      colors=['#2ecc71', '#e74c3c', '#bdc3c7'], alpha=0.85)
+        
+        plt.title("Learning Phases (HER Agent)", fontsize=16)
+        plt.xlabel("Episode", fontsize=14)
+        plt.ylabel("Outcome Probability (%)", fontsize=14)
+        plt.legend(loc='center right')
+        plt.margins(0,0)
+        plt.savefig(os.path.join(RESULTS_DIR, "behavior_profile_her.png"), dpi=300)
+        print("Saved: behavior_profile_her.png")
+    
+    plt.show()
+
+
 if __name__ == "__main__":
     print("Pick training mode:")
     print("1. Train DDPG + HER (Saves to training_log.csv)")
@@ -432,7 +528,8 @@ if __name__ == "__main__":
     print("3. Test saved model")
     print("4. Resume DDPG + HER")
     print("5. Plot Comparison Graph")
-    print("6. Train Baseline No HER (Saves to training_log_no_her.csv)")  # <--- NEW
+    print("6. Train Baseline No HER (Saves to training_log_no_her.csv)")
+    print("7. Plot Additional Metrics from HER Training Log")
 
     choice = input("Enter choice (1-6): ").strip()
 
@@ -450,5 +547,7 @@ if __name__ == "__main__":
         plot_training_results()
     elif choice == "6":
         visual_training_demo(resume=False, use_her=False)
+    elif choice == "7":
+        plot_detailed_comparisons()
     else:
         print("Invalid choice.")
