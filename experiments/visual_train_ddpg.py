@@ -24,8 +24,8 @@ from env.parallel_lot import ParallelParkingEnv
 
 def visual_training_demo(resume=False, use_her=True):
     """
-    ACADEMIC TRAINING (Code A) + VISUAL RENDERING ADDED.
-    Optimization: Reduced evaluation freq & gradient updates for speed.
+    Visual training demo that saves real training data to a CSV file for plotting.
+    Includes logic to append to existing logs if resuming.
     """
     import pandas as pd 
 
@@ -358,9 +358,8 @@ def test_model(model_path: str):
     
 def plot_training_results():
     """
-    Option 5: Plots BOTH 'training_log.csv' (HER) and 'training_log_no_her.csv' (Baseline).
-    Overlaying them creates the comparison graph required for the report.
-    
+    Plots learning curves from CSV logs.
+    Auto-detects if data is 0-1 or 0-100 to prevent scaling errors.
     """
     her_path = os.path.join(RESULTS_DIR, "training_log.csv")
     no_her_path = os.path.join(RESULTS_DIR, "training_log_no_her.csv")
@@ -368,33 +367,56 @@ def plot_training_results():
     plt.figure(figsize=(10, 6))
     plt.grid(True, linestyle='--', alpha=0.6)
     
+    # Helper to clean and smooth data
+    def process_data(df, col_name='Success', window=5):
+        # 1. Force column to numeric (coerces errors/strings to NaN)
+        df[col_name] = pd.to_numeric(df[col_name], errors='coerce')
+        
+        # 2. Check if data is 0-1 (decimal) or 0-100 (percent)
+        # If max value > 1.0, it's likely already a percentage.
+        scale_factor = 1.0 if df[col_name].max() > 1.0 else 100.0
+        
+        # 3. Apply rolling mean and scaling
+        # Note: If using Code A (Academic), data is sparse, so window=5 is good.
+        # If using Code B (Every step), use window=50.
+        return df[col_name].rolling(window=window, min_periods=1).mean() * scale_factor
+
     # 1. Plot HER Data (Blue)
     if os.path.exists(her_path):
         print(f"Loading HER data from {her_path}...")
-        df_her = pd.read_csv(her_path)
-        # Smoothing window
-        df_her['Success Rate'] = df_her['Success'].rolling(window=5, min_periods=1).mean() * 100
-        plt.plot(df_her['Episode'], df_her['Success Rate'], label='DDPG + HER (Ours)', color='blue', linewidth=2)
-        plt.fill_between(df_her['Episode'], df_her['Success Rate'], alpha=0.1, color='blue')
+        try:
+            df_her = pd.read_csv(her_path)
+            y_values = process_data(df_her, 'Success', window=5)
+            
+            plt.plot(df_her['Episode'], y_values, label='DDPG + HER (Ours)', color='blue', linewidth=2)
+            plt.fill_between(df_her['Episode'], y_values, alpha=0.1, color='blue')
+        except Exception as e:
+            print(f"Error reading HER log: {e}")
     else:
-        print(f"[Info] HER log not found ({her_path}). Run Option 1 to generate.")
+        print(f"[Info] HER log not found ({her_path}).")
 
     # 2. Plot No-HER Data (Red)
     if os.path.exists(no_her_path):
         print(f"Loading Baseline data from {no_her_path}...")
-        df_no = pd.read_csv(no_her_path)
-        # Smoothing window
-        df_no['Success Rate'] = df_no['Success'].rolling(window=5, min_periods=1).mean() * 100
-        plt.plot(df_no['Episode'], df_no['Success Rate'], label='Standard DDPG (No HER)', color='red', linewidth=2, linestyle='--')
-        plt.fill_between(df_no['Episode'], df_no['Success Rate'], alpha=0.1, color='red')
+        try:
+            df_no = pd.read_csv(no_her_path)
+            y_values = process_data(df_no, 'Success', window=5)
+            
+            plt.plot(df_no['Episode'], y_values, label='Standard DDPG (No HER)', color='red', linewidth=2, linestyle='--')
+            plt.fill_between(df_no['Episode'], y_values, alpha=0.1, color='red')
+        except Exception as e:
+            print(f"Error reading Baseline log: {e}")
     else:
-        print(f"[Info] Baseline log not found ({no_her_path}). Run Option 6 to generate.")
+        print(f"[Info] Baseline log not found ({no_her_path}).")
 
     plt.title("Learning Curve Comparison: Impact of HER", fontsize=16, pad=20)
-    plt.ylabel("Success Rate (Avg over 50 eps) %", fontsize=14)
+    plt.ylabel("Success Rate (%)", fontsize=14)
     plt.xlabel("Episode", fontsize=14)
+    
+    # Force Y-axis to 0-100 range
     plt.ylim(-5, 105)
     plt.xlim(left=0)
+    
     plt.legend(loc='upper left', fontsize=12)
 
     plot_path = os.path.join(RESULTS_DIR, "comparison_plot.png")
