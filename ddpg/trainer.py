@@ -14,8 +14,7 @@ from env import parallel_lot
 
 class Trainer:
     """
-    Handles environment interaction and training loop.
-    Implements Hindsight Experience Replay (HER) logic.
+    Handles environment interaction and training loop.Implements Hindsight Experience Replay (HER) logic.
     """
 
     def __init__(self, parking_env: parallel_lot.ParallelParkingEnv, agent: DDPGAgent, use_her: bool = True) -> None:
@@ -119,6 +118,7 @@ class Trainer:
         return np.array([x, y, theta], dtype=np.float32)
 
     def print_episode_summary(self, episode: int, print_every: int) -> None:
+        #Prints episode metrics and saves models based on performance
         if (episode + 1) % print_every == 0:
             avg_reward = np.mean(self.episode_rewards[-print_every:])
             avg_length = np.mean(self.episode_lengths[-print_every:])

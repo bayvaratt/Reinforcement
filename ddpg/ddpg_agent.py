@@ -33,7 +33,7 @@ class DDPGAgent:
         self.actor_target = Actor(state_dim, action_dim, self.max_action, hidden_dim=400).to(self.device)
         self.actor_target.load_state_dict(self.actor.state_dict())
 
-        self.actor_optimiser = torch.optim.Adam(self.actor.parameters(), lr=5e-5)  # Fine-tune lr if needed
+        self.actor_optimiser = torch.optim.Adam(self.actor.parameters(), lr=5e-5)  # adjust lr if needed when we do the results section
 
         # Critic: network, target network, and optimiser
         self.critic = Critic(state_dim, action_dim, hidden_dim=400).to(self.device)
@@ -68,7 +68,7 @@ class DDPGAgent:
         """
         Decay the noise scale factor which is called at the end of each episode.
         """
-        self.noise_scale = max(self.min_noise_scale, self.noise_scale * self.noise_decay)  # Exponential decay
+        self.noise_scale = max(self.min_noise_scale, self.noise_scale * self.noise_decay)
 
     def get_sample_batch(self, her_buffer: ReplayBuffer, batch_size: int):
         batch = her_buffer.sample(batch_size)
@@ -114,8 +114,7 @@ class DDPGAgent:
 
     def soft_update(self, source_net: torch.nn.Module, target_net: torch.nn.Module) -> None:
         """
-        Soft-update target network parameters derived from:
-        theta_target = tau * theta_source + (1 - tau) * theta_target
+        Soft-update target network parameters derived from: theta_target = tau * theta_source + (1 - tau) * theta_target
         """
         for p, target_p in zip(source_net.parameters(), target_net.parameters()):
             target_p.data.copy_(self.soft_update_factor * p.data + (1 - self.soft_update_factor) * target_p.data)
@@ -134,7 +133,7 @@ class DDPGAgent:
                 "critic_optimiser_state_dict": self.critic_optimiser.state_dict(),
             },
             filepath,
-        )  # Save checkpoint to disk
+        )
 
 
 
@@ -149,4 +148,4 @@ class DDPGAgent:
             self.actor_target.load_state_dict(checkpoint["actor_target_state_dict"])
             self.critic_target.load_state_dict(checkpoint["critic_target_state_dict"])
             self.actor_optimiser.load_state_dict(checkpoint["actor_optimiser_state_dict"])
-            self.critic_optimiser.load_state_dict(checkpoint["critic_optimiser_state_dict"])  # Restore optimiser states
+            self.critic_optimiser.load_state_dict(checkpoint["critic_optimiser_state_dict"])

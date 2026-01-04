@@ -27,5 +27,5 @@ class Actor(nn.Module):
         """
         Forward pass through the actor network.
         """
-        x = self.network(state)  # Pass through layers
+        x = self.network(state)
         return x * self.max_action

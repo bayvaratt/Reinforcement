@@ -29,7 +29,7 @@ class ParallelParkingEnv(AbstractEnv):
             "action": {
                 "type": "ContinuousAction",
                 "acceleration_range": [-1.0, 1.0],
-                "steering_range": [-np.pi / 4, np.pi / 4],
+                "steering_range": [-np.pi / 4, np.pi / 4], # The steering range is currently clamped to 45 degrees, might need to increase for tighter spots.
                 "longitudinal": True,
                 "lateral": True
             },
@@ -114,10 +114,6 @@ class ParallelParkingEnv(AbstractEnv):
         is_out_of_bounds = (x < -40 or x > 40 or y < -20 or y > 20)
         
         gx, gy = self.goal[0], self.goal[1]
-        dx = x - gx
-        dy = y - gy
-        dist_to_goal = np.linalg.norm([dx, dy])
-        
         current_position = np.array([x, y])
         self.last_position = current_position.copy()
         
@@ -167,21 +163,22 @@ class ParallelParkingEnv(AbstractEnv):
         rel_y = -dx * sin_h + dy * cos_h
         rel_theta = (self.goal[2] - raw_state[2] + np.pi) % (2 * np.pi) - np.pi
 
+        # only checking 4 directions to save compute time during training - front, rear, left, right
         lidar = np.array([20.0, 20.0, 10.0, 10.0], dtype=np.float32) 
         
         for other in self.road.vehicles:
-            if other is v: continue
+            if other is v: 
+                continue
             
             # Vector to other vehicle (Global)
             d_glob_x = other.position[0] - raw_state[0]
             d_glob_y = other.position[1] - raw_state[1]
-            
-            # Rotate to Ego Frame
             d_loc_x = d_glob_x * cos_h + d_glob_y * sin_h
             d_loc_y = -d_glob_x * sin_h + d_glob_y * cos_h
             
             dist = np.linalg.norm([d_loc_x, d_loc_y])
-            if dist > 20.0: continue
+            if dist > 20.0: 
+                continue
 
             safety_margin = 0.3
             
@@ -201,7 +198,7 @@ class ParallelParkingEnv(AbstractEnv):
                     dist = max(0.0, abs(d_loc_y) - safety_margin)
                     lidar[3] = min(lidar[3], dist)
 
-        # 3. Assemble State (14 Dims)
+        # 3. Initialise State Vector (14 Dims)
         obs = np.array([
             rel_x / 50.0,          
             rel_y / 50.0,          
