@@ -18,10 +18,11 @@ class Trainer:
     Implements Hindsight Experience Replay (HER) logic.
     """
 
-    def __init__(self, parking_env: parallel_lot.ParallelParkingEnv, agent: DDPGAgent) -> None:
+    def __init__(self, parking_env: parallel_lot.ParallelParkingEnv, agent: DDPGAgent, use_her: bool = True) -> None:
         self.parking_env = parking_env
         self.agent = agent
-        self.future_k = 4  # Num future samples for HER
+        # If use_her is True, k=4. If False, k=0, which disables HER)
+        self.future_k = 4 if use_her else 0
 
         obs, _ = self.parking_env.reset()
 

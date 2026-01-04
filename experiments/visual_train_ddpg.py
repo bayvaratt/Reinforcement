@@ -23,7 +23,7 @@ from ddpg.trainer import Trainer
 from env.parallel_lot import ParallelParkingEnv
 
 
-def visual_training_demo(resume=False):
+def visual_training_demo(resume=False, use_her=True):
     """
     Visual training demo that saves real training data to a CSV file for plotting.
     Includes logic to append to existing logs if resuming.
@@ -45,7 +45,19 @@ def visual_training_demo(resume=False):
     batch_size = 256               
     render_every_n_steps = 0     
     render_delay = 0.0             
-    print_every = 10               
+    print_every = 10  
+    
+    if use_her:
+        log_filename = "training_log.csv"
+        mode_title = "WITH HER"
+    else:
+        log_filename = "training_log_no_her.csv"
+        mode_title = "NO HER (BASELINE)"            
+        
+    print("=" * 80)
+    print(f"VISUAL DDPG TRAINING - {mode_title}")
+    print("=" * 80)
+    print(f"Saving logs to: {log_filename}")
 
     warmup_steps = 5000           
     if resume:
@@ -83,11 +95,11 @@ def visual_training_demo(resume=False):
     print(f"    - Starting noise scale: {agent.noise_scale}")
 
     print("\n[3/3] Beginning visual training...")
-    trainer = Trainer(parking_env, agent)
+    trainer = Trainer(parking_env, agent, use_her=use_her)
     
     # --- SETUP LOGGING ---
     training_log = [] 
-    log_path = os.path.join(RESULTS_DIR, "training_log.csv")
+    log_path = os.path.join(RESULTS_DIR, log_filename)
     
     if resume:
         model_input = input("Enter the model file name or path to resume from (e.g., ddpg_agent_final.pth): ").strip()
@@ -360,75 +372,75 @@ def test_model(model_path: str):
     
 def plot_training_results():
     """
-    Option 5: Plots the REAL training data from 'training_log.csv'.
-    """
-    log_path = os.path.join(RESULTS_DIR, "training_log.csv")
+    Option 5: Plots BOTH 'training_log.csv' (HER) and 'training_log_no_her.csv' (Baseline).
+    Overlaying them creates the comparison graph required for the report.
     
-    if not os.path.exists(log_path):
-        print(f"\n[Error] No training data found at: {log_path}")
-        print("You must run Option 1 (Full Training) first to generate data.")
-        return
-
-    print(f"\nLoading data from {log_path}...")
-    df = pd.read_csv(log_path)
-
-    # Calculate Success Rate (Moving Average over 50 episodes)
-    # This creates the "Curve" effect instead of just jagged lines
-    df['Success Rate'] = df['Success'].rolling(window=50, min_periods=1).mean() * 100
-
+    """
+    her_path = os.path.join(RESULTS_DIR, "training_log.csv")
+    no_her_path = os.path.join(RESULTS_DIR, "training_log_no_her.csv")
+    
     plt.figure(figsize=(10, 6))
     plt.grid(True, linestyle='--', alpha=0.6)
-
-    # Plot the Real Data
-    plt.plot(df['Episode'], df['Success Rate'], label='DDPG + HER (Real)', color='blue', linewidth=2)
     
-    # Fill under the line slightly to look nice
-    plt.fill_between(df['Episode'], df['Success Rate'], alpha=0.1, color='blue')
+    # 1. Plot HER Data (Blue)
+    if os.path.exists(her_path):
+        print(f"Loading HER data from {her_path}...")
+        df_her = pd.read_csv(her_path)
+        # Smoothing window
+        df_her['Success Rate'] = df_her['Success'].rolling(window=50, min_periods=1).mean() * 100
+        plt.plot(df_her['Episode'], df_her['Success Rate'], label='DDPG + HER (Ours)', color='blue', linewidth=2)
+        plt.fill_between(df_her['Episode'], df_her['Success Rate'], alpha=0.1, color='blue')
+    else:
+        print(f"[Info] HER log not found ({her_path}). Run Option 1 to generate.")
 
-    plt.title("Real Learning Curve: Parallel Parking", fontsize=16, pad=20)
+    # 2. Plot No-HER Data (Red)
+    if os.path.exists(no_her_path):
+        print(f"Loading Baseline data from {no_her_path}...")
+        df_no = pd.read_csv(no_her_path)
+        # Smoothing window
+        df_no['Success Rate'] = df_no['Success'].rolling(window=50, min_periods=1).mean() * 100
+        plt.plot(df_no['Episode'], df_no['Success Rate'], label='Standard DDPG (No HER)', color='red', linewidth=2, linestyle='--')
+        plt.fill_between(df_no['Episode'], df_no['Success Rate'], alpha=0.1, color='red')
+    else:
+        print(f"[Info] Baseline log not found ({no_her_path}). Run Option 6 to generate.")
+
+    plt.title("Learning Curve Comparison: Impact of HER", fontsize=16, pad=20)
     plt.ylabel("Success Rate (Avg over 50 eps) %", fontsize=14)
     plt.xlabel("Episode", fontsize=14)
     plt.ylim(-5, 105)
+    plt.xlim(left=0)
     plt.legend(loc='upper left', fontsize=12)
 
-    plot_path = os.path.join(RESULTS_DIR, "real_training_plot.png")
+    plot_path = os.path.join(RESULTS_DIR, "comparison_plot.png")
     plt.tight_layout()
     plt.savefig(plot_path, dpi=300)
-    print(f"Graph saved to: {plot_path}")
+    print(f"Comparison graph saved to: {plot_path}")
     plt.show()
 
 if __name__ == "__main__":
     print("Pick training mode:")
-    print("1. Full visual training (2000 episodes, with rendering)")
+    print("1. Train DDPG + HER (Saves to training_log.csv)")
     print("2. Quick visual test (1 episode)")
-    print("3. Test saved model (100 episodes)")
-    print("4. Resume visual training (500 episodes)")
-    print("5. Plot training results (HER style graph)")
+    print("3. Test saved model")
+    print("4. Resume DDPG + HER")
+    print("5. Plot Comparison Graph")
+    print("6. Train Baseline No HER (Saves to training_log_no_her.csv)")  # <--- NEW
 
-    choice = input("Enter choice (1-5): ").strip()
+    choice = input("Enter choice (1-6): ").strip()
 
     if choice == "1":
-        visual_training_demo(resume=False)
+        visual_training_demo(resume=False, use_her=True)
     elif choice == "2":
         quick_visual_test()
     elif choice == "3":
-        model_input = input("Enter the model file name or path (e.g., ddpg_agent_final.pth): ").strip()
-        
-        if os.path.isabs(model_input):
-            model_path = model_input
-        else:
-            if model_input.startswith("results/parallel_parking/"):
-                model_path = os.path.join(PROJECT_ROOT, model_input)
-            else:
-                model_path = os.path.join(RESULTS_DIR, model_input)
-        
-        if not model_path.endswith(".pth"):
-            model_path = f"{model_path}.pth"
-        
-        test_model(model_path)
+        model_input = input("Enter model path: ").strip()
+        if not model_input.endswith(".pth"): model_input += ".pth"
+        test_model(os.path.join(RESULTS_DIR, model_input))
     elif choice == "4":
-        visual_training_demo(resume=True)
+        visual_training_demo(resume=True, use_her=True)
     elif choice == "5":
         plot_training_results()
+    elif choice == "6":
+        visual_training_demo(resume=False, use_her=False)
     else:
         print("Invalid choice.")
