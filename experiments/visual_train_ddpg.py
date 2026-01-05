@@ -5,7 +5,6 @@ import numpy as np
 import torch
 import time
 import matplotlib.pyplot as plt
-import seaborn as sns
 import pandas as pd
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -27,11 +26,10 @@ def visual_training_demo(resume=False, use_her=True):
     Visual training demo that saves real training data to a CSV file for plotting.
     Includes logic to append to existing logs if resuming.
     """
-    import pandas as pd 
 
     # --- VISUAL SETTINGS ---
 
-    render_every_n_steps = 0   
+    render_every_n_steps = 10   
     render_delay = 0.0          
     
     # Determine render mode based on settings
@@ -250,7 +248,7 @@ def quick_visual_test():
     """
     print("\nQUICK VISUAL TEST - One Episode Demo")
     print("=" * 50)
-    
+
     set_seed(42)
 
     env = ParallelParkingEnv(render_mode="human")
@@ -402,7 +400,7 @@ def plot_training_results():
             df_no = pd.read_csv(no_her_path)
             y_values = process_data(df_no, 'Success', window=5)
             
-            plt.plot(df_no['Episode'], y_values, label='Standard DDPG (No HER)', color='red', linewidth=2, linestyle='--')
+            plt.plot(df_no['Episode'], y_values, label='DDPG', color='red', linewidth=2, linestyle='--')
             plt.fill_between(df_no['Episode'], y_values, alpha=0.1, color='red')
         except Exception as e:
             print(f"Error reading Baseline log: {e}")
@@ -462,7 +460,7 @@ def plot_detailed_comparisons():
         plt.fill_between(df_her['Episode'], df_her['Reward_Smooth'], alpha=0.1, color='blue')
         
     if df_no is not None:
-        plt.plot(df_no['Episode'], df_no['Reward_Smooth'], color='red', linewidth=2, linestyle='--', label='Baseline (No HER)')
+        plt.plot(df_no['Episode'], df_no['Reward_Smooth'], color='red', linewidth=2, linestyle='--', label='DDPG')
     
     plt.title("Reward Convergence: HER vs Baseline", fontsize=16)
     plt.xlabel("Episode", fontsize=14)
@@ -481,7 +479,7 @@ def plot_detailed_comparisons():
         plt.plot(df_her['Episode'], df_her['Steps_Smooth'], color='blue', linewidth=2, label='DDPG + HER')
         
     if df_no is not None:
-        plt.plot(df_no['Episode'], df_no['Steps_Smooth'], color='red', linewidth=2, linestyle='--', label='Baseline')
+        plt.plot(df_no['Episode'], df_no['Steps_Smooth'], color='red', linewidth=2, linestyle='--', label='DDPG')
 
     plt.title("Parking Efficiency: Steps to Finish", fontsize=16)
     plt.xlabel("Episode", fontsize=14)
@@ -540,7 +538,7 @@ def compare_three_agents():
     # Define Agents
     models = [
         {"name": "Random",      "file": None,                     "color": "gray"},
-        {"name": "DDPG (Base)", "file": "ddpg_agent_no_her.pth",  "color": "red"},
+        {"name": "DDPG", "file": "ddpg_agent_no_her.pth",  "color": "red"},
         {"name": "DDPG + HER",  "file": "HIGH_SUCCESS_success_100.0_crash_0.0_20260104_123740.pth",   "color": "blue"}
     ]
     
@@ -657,32 +655,33 @@ def compare_three_agents():
 
 
 if __name__ == "__main__":
-    print("Pick training mode:")
-    print("1. Train DDPG + HER (Saves to training_log.csv)")
-    print("2. Quick visual test (1 episode)")
-    print("3. Test saved model")
-    print("4. Resume DDPG + HER")
-    print("5. Plot Comparison Graph")
-    print("6. Train Baseline No HER (Saves to training_log_no_her.csv)")
-    print("7. Plot Additional Metrics from HER Training Log")
-    print("8. Plot final Comparison: Random vs No-HER vs HER")
+    
+    print("\n\nChoose the following options below:\n")
+    print("1. Train DDPG + HER (Main Method)")
+    print("2. Resume DDPG + HER (Continue training with ddpg_agent_final.pth)")
+    print("3. Train Baseline (No HER)")
+    print("4. Quick Visual Test (1 Episode)")
+    print("5. Test Saved Model (Load .pth file)")
+    print("6. Plot Comparison (HER vs No-HER)")
+    print("7. Plot Detailed Metrics (Success rate, Reward, Crash rate, Steps)")
+    print("8. Plot Final Comparison (Random vs DDPG vs DDPG+HER)")
 
-    choice = input("Enter choice (1-6): ").strip()
+    choice = input("\nEnter choice (1-8): ").strip()
 
     if choice == "1":
         visual_training_demo(resume=False, use_her=True)
     elif choice == "2":
-        quick_visual_test()
+        visual_training_demo(resume=True, use_her=True)
     elif choice == "3":
+        visual_training_demo(resume=False, use_her=False)
+    elif choice == "4":
+        quick_visual_test()
+    elif choice == "5":
         model_input = input("Enter model path: ").strip()
         if not model_input.endswith(".pth"): model_input += ".pth"
         test_model(os.path.join(RESULTS_DIR, model_input))
-    elif choice == "4":
-        visual_training_demo(resume=True, use_her=True)
-    elif choice == "5":
-        plot_training_results()
     elif choice == "6":
-        visual_training_demo(resume=False, use_her=False)
+        plot_training_results()
     elif choice == "7":
         plot_detailed_comparisons()
     elif choice == "8":
