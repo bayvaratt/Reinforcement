@@ -32,7 +32,7 @@ def train_ddpg(resume=False):
 
     print("\nGoal: Train agent to park between other cars")
     print("Output: Episode rewards and success rates shown in terminal")
-    print("Speed: No rendering - trains at max speed")
+    print("Speed: No rendering")
     print("Warmup: First 5000 steps are random actions to fill buffer\n")
 
     episodes_to_train = 2000            
@@ -46,14 +46,12 @@ def train_ddpg(resume=False):
         episodes_to_train = 500
     
     set_seed(42)
-    # Device setup
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
     print("\n[1/3] Initialising parallel parking environment...")
     parking_env = ParallelParkingEnv(config={}, render_mode=None)
 
-    # Get state and action dimensions
     obs, info = parking_env.reset()
     state_dim = obs.shape[0]
     action_dim = parking_env.action_space.shape[0]
@@ -63,9 +61,8 @@ def train_ddpg(resume=False):
     print("  Environment ready (headless mode)")
     print(f"    - State dimension: {state_dim}")
     print(f"    - Action dimension: {action_dim}")
-    print(f"    - Max action bounds: {max_action}")  # action limits
+    print(f"    - Max action bounds: {max_action}")
 
-    # Initialise DDPG agent
     print("\n[2/3] Setting up DDPG agent...")
     agent = DDPGAgent(
         state_dim=state_dim,
@@ -87,7 +84,6 @@ def train_ddpg(resume=False):
         if os.path.isabs(model_input):
             load_path = model_input
         else:
-            # Check if user already included full path
             if model_input.startswith("results/parallel_parking/"):
                 load_path = os.path.join(PROJECT_ROOT, model_input)
             else:
@@ -130,15 +126,14 @@ def train_ddpg(resume=False):
             agent.noise.reset()
             episode_reward = 0
             episode_steps = 0
-            episode_cache = []  # Store transitions for HER
+            episode_cache = []
 
             for _ in range(max_episode_steps):
                 
-                # Warmup phase: random actions to populate buffer
                 if total_steps < warmup_steps:
                     action = parking_env.action_space.sample()
                 else:
-                    action = agent.select_action(state, noise=True)  # Policy with noise
+                    action = agent.select_action(state, noise=True)
 
                 next_obs, reward, terminated, truncated, info = parking_env.step(action)
                 next_state = next_obs
@@ -156,14 +151,12 @@ def train_ddpg(resume=False):
             
             trainer.store_episode(episode_cache)
 
-            # Train agent with 1:1 step-to-training ratio
             if total_steps >= warmup_steps and len(trainer.replay_buffer) > batch_size:
                 for _ in range(episode_steps):
-                    agent.train(trainer.replay_buffer, batch_size)  # Network updates
+                    agent.train(trainer.replay_buffer, batch_size)
 
             agent.noise_scale = max(0.02, agent.noise_scale * 0.998)
 
-            # Store episode stats
             trainer.episode_rewards.append(episode_reward)
             trainer.episode_lengths.append(episode_steps)
 
@@ -171,7 +164,7 @@ def train_ddpg(resume=False):
             is_crash = info.get('is_crash', False) or info.get('is_out_of_bounds', False)
             
             trainer.success_history.append(is_success)
-            trainer.crash_history.append(is_crash)  # Track crashes
+            trainer.crash_history.append(is_crash)
 
             trainer.print_episode_summary(episode, print_every)
 
@@ -180,7 +173,7 @@ def train_ddpg(resume=False):
         print("TRAINING FINISHED!")
         final_model_path = os.path.join(RESULTS_DIR, "ddpg_agent_final.pth")
         print(f"Final model saved: {final_model_path}")
-        print(f"Best performance: Success {trainer.best_success_rate:.1f}% | Crash {trainer.best_crash_rate:.1f}%")  # Results
+        print(f"Best performance: Success {trainer.best_success_rate:.1f}% | Crash {trainer.best_crash_rate:.1f}%")
         print(f"Total time: {elapsed_time / 3600:.2f} hours")
         print("=" * 80)
         agent.save(final_model_path)
@@ -198,14 +191,12 @@ def train_ddpg(resume=False):
         traceback.print_exc()
 
     finally:
-        print("\nCleaning up...")
         parking_env.close()
-        print("Environment closed")
 
 
 def test_model(model_path: str):
     """Test a saved model for 100 episodes without rendering."""
-    print(f"--- Testing model: {model_path} ---")
+    print(f"Testing model: {model_path}")
     successes = 0
     crashes = 0
     
@@ -228,11 +219,9 @@ def test_model(model_path: str):
         device=device
     )
 
-    # Load the model
     agent.load(model_path)
     print("Model loaded OK.")
 
-    # Test runs
     test_episodes = 100
     total_reward = 0
     
@@ -243,7 +232,7 @@ def test_model(model_path: str):
         episode_reward = 0
         
         while not done:
-            # Note: noise=False for testing
+            # Note: use noise=False for testing
             action = agent.select_action(obs, noise=False)
             
             obs, reward, terminated, truncated, info = env.step(action)
@@ -255,7 +244,7 @@ def test_model(model_path: str):
         # Check result
         status = "SUCCESS" if info.get('is_success') else "FAIL"
         if info.get('is_crash') or info.get('is_out_of_bounds'): 
-            status = "CRASH"  # Hit something
+            status = "CRASH"
         
         if status == "SUCCESS":
             successes += 1
@@ -274,7 +263,7 @@ def test_model(model_path: str):
     print("\n" + "=" * 80)
     print(f"TEST RESULTS")
     print(f"Success: {success_rate:.1f}% | Crashes: {crash_rate:.1f}%")
-    print(f"Avg reward: {avg_reward:.2f}")  # Performance summary
+    print(f"Avg reward: {avg_reward:.2f}")
     print("=" * 80)
 
     env.close()
@@ -296,7 +285,6 @@ if __name__ == "__main__":
         if os.path.isabs(model_input):
             model_path = model_input
         else:
-            # Check if user already included full path
             if model_input.startswith("results/parallel_parking/"):
                 model_path = os.path.join(PROJECT_ROOT, model_input)
             else:

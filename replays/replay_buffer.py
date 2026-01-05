@@ -44,7 +44,7 @@ class ReplayBuffer:
         """
         # Ensure we don't sample more than available
         sample_size = min(batch_size, self.size)
-        replace = sample_size > self.size  # Sampling with replacement if needed
+        replace = sample_size > self.size
         
         indices = np.random.choice(self.size, size=sample_size, replace=replace)
         batch = {
