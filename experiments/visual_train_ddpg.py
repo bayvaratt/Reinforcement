@@ -520,6 +520,141 @@ def plot_detailed_comparisons():
     
     plt.show()
 
+def compare_three_agents():
+    """
+    Runs a performance test for 100 episodes for 3 Agents:
+    1. Random Agent (Baseline)
+    2. DDPG
+    3. DDPG with HER
+    
+    """
+    
+    print("="*60)
+    print("FINAL COMPARATIVE TEST: Random vs No-HER vs HER")
+    print("="*60)
+    
+    # Configuration
+    n_episodes = 100
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    # Define Agents
+    models = [
+        {"name": "Random",      "file": None,                     "color": "gray"},
+        {"name": "DDPG (Base)", "file": "ddpg_agent_no_her.pth",  "color": "red"},
+        {"name": "DDPG + HER",  "file": "HIGH_SUCCESS_success_100.0_crash_0.0_20260104_123740.pth",   "color": "blue"}
+    ]
+    
+    results = []
+    
+    # Init Env (Fast mode)
+    env = ParallelParkingEnv(render_mode=None)
+    state_dim = env.observation_space.shape[0]
+    action_dim = env.action_space.shape[0]
+    max_action = np.array([np.pi / 4, 1.0])
+
+    print(f"{'Agent':<15} | {'Success':<8} | {'Crash':<8} | {'Steps':<8}")
+    print("-" * 50)
+
+    for model_config in models:
+        name = model_config["name"]
+        filename = model_config["file"]
+        
+        # Setup Agent
+        agent = DDPGAgent(state_dim, action_dim, max_action, device=device)
+        
+        # Load weights (if not random)
+        if filename:
+            path = os.path.join(RESULTS_DIR, filename)
+            if os.path.exists(path):
+                agent.load(path)
+            else:
+                print(f"Error: {filename} not found. Skipping {name}.")
+                continue
+        
+        # Metric Counters
+        success_count = 0
+        crash_count = 0
+        total_steps = 0
+        
+        # Run Exam
+        for i in range(n_episodes):
+            # Same seed for fairness
+            obs, info = env.reset(seed=42 + i) 
+            done = False
+            ep_steps = 0
+            
+            while not done:
+                if filename is None:
+                    action = env.action_space.sample() # Random
+                else:
+                    action = agent.select_action(obs, noise=False) # Trained
+                
+                obs, reward, terminated, truncated, info = env.step(action)
+                done = terminated or truncated
+                ep_steps += 1
+            
+            # Tally results
+            if info.get('is_success', False): success_count += 1
+            if info.get('is_crash', False) or info.get('is_out_of_bounds', False): crash_count += 1
+            total_steps += ep_steps
+
+        # Calculate Averages
+        success_rate = (success_count / n_episodes) * 100
+        crash_rate = (crash_count / n_episodes) * 100
+        avg_steps = total_steps / n_episodes
+        
+        # Print to Terminal Table
+        print(f"{name:<15} | {success_rate:5.1f}%  | {crash_rate:5.1f}%  | {avg_steps:5.1f}")
+        
+        results.append({
+            "Agent": name,
+            "Success": success_rate,
+            "Crash": crash_rate,
+            "Steps": avg_steps,
+            "Color": model_config["color"]
+        })
+
+    env.close()
+
+    # --- PLOTTING 3 SUBPLOTS ---
+    if not results: return
+
+    df = pd.DataFrame(results)
+    
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    
+    # 1. Success Rate
+    axes[0].bar(df['Agent'], df['Success'], color=df['Color'], alpha=0.7, edgecolor='black')
+    axes[0].set_title("Success Rate (Higher is Better)")
+    axes[0].set_ylabel("Percent (%)")
+    axes[0].set_ylim(0, 105)
+    axes[0].grid(axis='y', alpha=0.3)
+    
+    # 2. Crash Rate
+    axes[1].bar(df['Agent'], df['Crash'], color=df['Color'], alpha=0.7, edgecolor='black')
+    axes[1].set_title("Crash Rate (Lower is Better)")
+    axes[1].set_ylim(0, 105)
+    axes[1].grid(axis='y', alpha=0.3)
+
+    # 3. Average Steps
+    axes[2].bar(df['Agent'], df['Steps'], color=df['Color'], alpha=0.7, edgecolor='black')
+    axes[2].set_title("Average Steps (Lower is Better)")
+    axes[2].set_ylabel("Steps")
+    axes[2].grid(axis='y', alpha=0.3)
+    
+    # Add labels to all bars
+    for ax in axes:
+        for container in ax.containers:
+            ax.bar_label(container, fmt='%.1f', padding=3, fontweight='bold')
+
+    plt.suptitle(f"Agent Performance Comparison (n={n_episodes} Episodes)", fontsize=16)
+    plt.tight_layout()
+    
+    save_path = os.path.join(RESULTS_DIR, "final_comparison_metrics.png")
+    plt.savefig(save_path, dpi=300)
+    print(f"\nSaved comparison chart to: {save_path}")
+    plt.show()
+
 
 if __name__ == "__main__":
     print("Pick training mode:")
@@ -530,6 +665,7 @@ if __name__ == "__main__":
     print("5. Plot Comparison Graph")
     print("6. Train Baseline No HER (Saves to training_log_no_her.csv)")
     print("7. Plot Additional Metrics from HER Training Log")
+    print("8. Plot final Comparison: Random vs No-HER vs HER")
 
     choice = input("Enter choice (1-6): ").strip()
 
@@ -549,5 +685,7 @@ if __name__ == "__main__":
         visual_training_demo(resume=False, use_her=False)
     elif choice == "7":
         plot_detailed_comparisons()
+    elif choice == "8":
+        compare_three_agents()
     else:
         print("Invalid choice.")
