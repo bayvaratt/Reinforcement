@@ -59,6 +59,7 @@ python experiments/visual_train_ddpg.py
 5. **Plot Comparison Graph:** Generate a plot comparing HER and baseline performance.
 6. **Train Baseline No HER:** Train the agent without HER (baseline).
 7. **Plot Additional Metrics from HER Training Log:** Generate detailed plots from the HER training log.
+8. **Plot final Comparison: Random vs No-HER vs HER** Generate 3 bar charts comparing success rate, crash rate, and average steps.
 
 ---
 
