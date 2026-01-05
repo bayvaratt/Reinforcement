@@ -1,7 +1,6 @@
 # Reinforcement Learning for Parallel Parking with DDPG
 
-This project implements a **Deep Deterministic Policy Gradient (DDPG)** agent trained to perform **parallel parking** in a custom parking environment.  
-It includes implementations for training with **Hindsight Experience Replay (HER)**, and tools for visualising performance comparisons.
+This project implements a **Deep Deterministic Policy Gradient (DDPG)** agent trained to perform **parallel parking** in a custom parking environment. It includes implementations for training with **Hindsight Experience Replay (HER)**, and tools for visualising performance comparisons.
 
 ---
 
@@ -25,8 +24,7 @@ pip install -r requirements.txt
 
 ## 2. Running the Code
 
-The core running is located in the `experiments/` folder.  
-You can run these scripts directly from the project root.
+The core running is located in the `experiments/` folder. You can run these scripts directly from the project root.
 
 ### A. Headless Training (Fastest)
 
@@ -54,10 +52,13 @@ python experiments/visual_train_ddpg.py
 
 **Menu Options:**
 
-1. **Train DDPG + HER:** Trains the main agent using Hindsight Experience Replay
-2. **Quick visual test:** Runs a single episode demo to verify the environment works.
-3. **Test saved model:** Visual evaluation of a pre-trained agent.
-4. **Resume DDPG + HER:** Continue training the HER agent.
+1. **Train DDPG + HER:** Train the main agent using Hindsight Experience Replay (HER).
+2. **Quick visual test:** Run a single episode demonstration to verify the environment functions correctly.
+3. **Test saved model:** Visually evaluate a pre-trained agent.
+4. **Resume DDPG + HER:** Continue training the HER agent from a previous checkpoint.
+5. **Plot Comparison Graph:** Generate a plot comparing HER and baseline performance.
+6. **Train Baseline No HER:** Train the agent without HER (baseline).
+7. **Plot Additional Metrics from HER Training Log:** Generate detailed plots from the HER training log.
 
 ---
 
