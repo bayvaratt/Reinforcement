@@ -53,12 +53,15 @@ python experiments/visual_train_ddpg.py
 **Menu Options:**
 
 1. **Train DDPG + HER:** Train the main agent using Hindsight Experience Replay (HER).
-2. **Quick visual test:** Run a single episode demonstration to verify the environment functions correctly.
-3. **Test saved model:** Visually evaluate a pre-trained agent.
-4. **Resume DDPG + HER:** Continue training the HER agent from a previous checkpoint.
-5. **Plot Comparison Graph:** Generate a plot comparing HER and baseline performance.
-6. **Train Baseline No HER:** Train the agent without HER (baseline).
+2. **Resume DDPG + HER:** Continue training the HER agent from a previous checkpoint.
+3. **Train Baseline No HER:** Train the agent without HER (baseline).
+4. **Quick visual test:** Run a single episode demonstration to verify the environment functions correctly.
+5. **Test saved model:** Visually evaluate a pre-trained agent.
+6. **Plot Comparison Graph:** Generate a plot comparing DDPG+HER and DDPG performance.
 7. **Plot Additional Metrics from HER Training Log:** Generate detailed plots from the HER training log.
+8. **Plot final Comparison: Random vs No-HER vs HER** Train 3 agents and generate 3 bar charts comparing success rate, crash rate, and average steps.
+
+
 
 ---
 
