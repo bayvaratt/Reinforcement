@@ -133,7 +133,7 @@ class Trainer:
             os.makedirs(results_dir, exist_ok=True)
             
             saved_model = False
-            save_reasons = []  # Why we're saving the model
+            save_reasons = []  #Why we're saving the model
             
             if combined_score > self.best_combined_score:
                 self.best_combined_score = combined_score
@@ -193,7 +193,7 @@ class Trainer:
             self.agent.noise.reset()
             episode_reward = 0
             episode_steps = 0
-            episode_cache = []  # Store transitions
+            episode_cache = []
 
             for _ in range(max_steps_per_episode):
                 action = self.agent.select_action(state, noise=True)

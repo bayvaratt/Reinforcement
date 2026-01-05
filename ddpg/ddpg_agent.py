@@ -43,7 +43,6 @@ class DDPGAgent:
 
         self.critic_optimiser = torch.optim.Adam(self.critic.parameters(), lr=5e-4)
 
-        # Exploration noise
         self.noise = OUNoise(action_dim)
         self.noise_scale = 0.5
         self.noise_decay = 0.995
@@ -60,7 +59,7 @@ class DDPGAgent:
         max_action_np = self.actor.max_action.cpu().numpy()
         
         if noise:
-            action += self.noise.sample() * max_action_np * self.noise_scale  # Add exploration noise
+            action += self.noise.sample() * max_action_np * self.noise_scale
         
         return np.clip(action, -max_action_np, max_action_np)
 
