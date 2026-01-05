@@ -39,11 +39,11 @@ def visual_training_demo(resume=False, use_her=True):
     if use_her:
         log_filename = "training_log.csv"
         model_filename = "ddpg_agent_final.pth"
-        mode_title = "WITH HER (FAST MODE)"
+        mode_title = "DDPG + HER"
     else:
         log_filename = "training_log_no_her.csv"
         model_filename = "ddpg_agent_no_her.pth"
-        mode_title = "NO HER (BASELINE)"
+        mode_title = "DDPG"
 
     print("=" * 80)
     print(f"ACADEMIC DDPG TRAINING - {mode_title}")
@@ -462,7 +462,7 @@ def plot_detailed_comparisons():
     if df_no is not None:
         plt.plot(df_no['Episode'], df_no['Reward_Smooth'], color='red', linewidth=2, linestyle='--', label='DDPG')
     
-    plt.title("Reward Convergence: HER vs Baseline", fontsize=16)
+    plt.title("Reward Convergence: DDPG+HER vs DDPG", fontsize=16)
     plt.xlabel("Episode", fontsize=14)
     plt.ylabel("Average Reward (Smoothed)", fontsize=14)
     plt.legend(loc='lower right', fontsize=12)
