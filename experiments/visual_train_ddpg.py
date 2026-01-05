@@ -495,7 +495,7 @@ def compare_three_agents():
     models = [
         {"name": "Random",      "file": None,                     "color": "gray"},
         {"name": "DDPG (Base)", "file": "ddpg_agent_no_her.pth",  "color": "red"},
-        {"name": "DDPG + HER",  "file": "HIGH_SUCCESS_success_90.0_crash_0.0_20260103_232227_SPARSE_STRONG.pth",   "color": "blue"}
+        {"name": "DDPG + HER",  "file": "HIGH_SUCCESS_success_100.0_crash_0.0_20260104_123740.pth",   "color": "blue"}
     ]
     
     results = []
