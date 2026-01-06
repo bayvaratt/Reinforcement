@@ -44,7 +44,7 @@ python experiments/train_ddpg.py
 
 ### B. Visual Training & Analysis
 
-Use this script to **visualise the parking**, train with/without HER, and generate performance comparison plots.
+Use this script to train with/without HER with live rendering, save detailed training logs (CSV), and generate the final performance plots for the report.
 
 ```bash
 python experiments/visual_train_ddpg.py
