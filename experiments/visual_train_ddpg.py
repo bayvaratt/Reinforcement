@@ -22,9 +22,12 @@ from env.parallel_lot import ParallelParkingEnv
 
 def visual_training_demo(resume=False, use_her=True, rendering: bool = False):
     """
-    Visual training demo that saves real training data to a CSV file for plotting.
-    Includes logic to append to existing logs if resuming.
+    Does main DDPG training with optional visualization, logging, and evaluation.
+    This function trains the agent for a set number of episodes (default 2000), performing
+    periodic evaluations (every 50 episodes) with noise = 0. It saves results to a CSV file 
+    which is required for plotting graphs.
     """
+    
     render_every_n_steps = 10 if rendering else 0   
     render_delay = 0.0  
     
@@ -33,19 +36,19 @@ def visual_training_demo(resume=False, use_her=True, rendering: bool = False):
     if use_her:
         log_filename = "training_log.csv"
         model_filename = "ddpg_agent_final.pth"
-        mode_title = "WITH HER (FAST MODE)"
+        mode_title = "WITH HER"
     else:
         log_filename = "training_log_no_her.csv"
         model_filename = "ddpg_agent_no_her.pth"
-        mode_title = "NO HER (BASELINE)"
+        mode_title = "NO HER"
 
-    print("=" * 80)
+    print("\n"+ "-" * 100)
     print(f"DDPG TRAINING - {mode_title}")
     print(f"Rendering: {'ENABLED' if mode_str else 'DISABLED'} (Every {render_every_n_steps} steps)")
-    print("=" * 80)
+    print("-" * 100)
     print(f"Saving logs to: {log_filename}")
 
-    episodes_to_run = 2000            
+    episodes_to_run = 2000          
     max_episode_steps = 200    
     batch_size = 256
 
@@ -99,9 +102,9 @@ def visual_training_demo(resume=False, use_her=True, rendering: bool = False):
     total_cycles = episodes_to_run // eval_interval
     global_episode = start_cycle * eval_interval 
 
-    print("\n" + "=" * 80)
+    print("\n" + "-" * 100)
     print("TRAINING STARTED")
-    print("=" * 80 + "\n")
+    print("-" * 100 + "\n")
 
     try:
         for cycle in range(start_cycle, total_cycles):
@@ -213,7 +216,7 @@ def visual_training_demo(resume=False, use_her=True, rendering: bool = False):
         print("\nInterrupted. Saving data...")
         agent.save(os.path.join(RESULTS_DIR, model_filename.replace(".pth", "_checkpoint.pth")))
         pd.DataFrame(training_log).to_csv(log_path, index=False)
-        print("Saved.")
+        print("Saved as ddpg_agent_final_checkpoint.pth")
 
     finally:
         train_env.close()
