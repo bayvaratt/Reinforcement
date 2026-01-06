@@ -25,8 +25,6 @@ def visual_training_demo(resume=False, use_her=True, rendering: bool = False):
     Visual training demo that saves real training data to a CSV file for plotting.
     Includes logic to append to existing logs if resuming.
     """
-    import pandas as pd 
-
     render_every_n_steps = 10 if rendering else 0   
     render_delay = 0.0  
     
@@ -262,8 +260,8 @@ def quick_visual_test():
         env.close()
         print("Test completed!")
 
-def test_model(model_path: str):
-    """Test a saved model for 100 episodes with visual rendering."""
+def test_model(model_path: str, rendering: bool = False):
+    """Test a saved model for 100 episodes with optional visual rendering."""
     print(f"--- Testing model: {model_path} ---")
     successes = 0
     crashes = 0
@@ -272,7 +270,8 @@ def test_model(model_path: str):
         print(f"Error: File '{model_path}' not found.")
         return
 
-    env = ParallelParkingEnv(config={}, render_mode="human")
+    render_mode = "human" if rendering else None
+    env = ParallelParkingEnv(config={}, render_mode=render_mode)
     obs, info = env.reset()
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -309,7 +308,8 @@ def test_model(model_path: str):
             total_reward += reward
             step += 1
             
-            env.render()
+            if rendering:
+                env.render()
         
         status = "SUCCESS" if info.get('is_success') else "FAIL"
         if info.get('is_crash') or info.get('is_out_of_bounds'): 
@@ -452,7 +452,7 @@ def plot_detailed_comparisons():
         plt.figure(figsize=(10, 6))
         
         scale = 100 if df_her['Success'].max() <= 1.0 else 1
-        win = 20
+        win = 10
         
         s = df_her['Success'].rolling(window=win, min_periods=1).mean() * scale
         c = df_her['Crash'].rolling(window=win, min_periods=1).mean() * scale
@@ -603,14 +603,14 @@ def compare_three_agents():
 
 if __name__ == "__main__":
     print("Pick training mode:")
-    print("1. Train DDPG + HER (Saves to training_log.csv)")
-    print("2. Quick visual test (1 episode)")
-    print("3. Test saved model")
-    print("4. Resume DDPG + HER")
-    print("5. Plot Comparison Graph")
-    print("6. Train Baseline No HER (Saves to training_log_no_her.csv)")
-    print("7. Plot Additional Metrics from HER Training Log")
-    print("8. Plot final Comparison: Random vs No-HER vs HER")
+    print("1. Train DDPG + HER: Train the main agent using Hindsight Experience Replay (HER).")
+    print("2. Resume DDPG + HER: Continue training the HER agent from a previous checkpoint.")
+    print("3. Train Baseline No HER: Train the agent without HER (baseline).")
+    print("4. Quick visual test: Run a single episode demonstration to verify the environment.")
+    print("5. Test saved model: Visually evaluate a pre-trained agent.")
+    print("6. Plot Comparison Graph: Generate a plot comparing DDPG+HER and DDPG performance.")
+    print("7. Plot Additional Metrics from HER Training Log: Generate detailed plots from HER log.")
+    print("8. Plot final Comparison: Random vs No-HER vs HER (3 agents, 3 bar charts).")
 
     choice = input("Enter choice (1-8): ").strip()
 
@@ -618,17 +618,20 @@ if __name__ == "__main__":
         rendering = input("Enable visualisation? (y/n): ").strip().lower() == 'y'
         visual_training_demo(resume=False, use_her=True, rendering=rendering)
     elif choice == "2":
-        quick_visual_test()
+        rendering = input("Enable visualisation? (y/n): ").strip().lower() == 'y'
+        visual_training_demo(resume=True, use_her=True, rendering=rendering)
     elif choice == "3":
+        rendering = input("Enable visualisation? (y/n): ").strip().lower() == 'y'
+        visual_training_demo(resume=False, use_her=False, rendering=rendering)
+    elif choice == "4":
+        quick_visual_test()
+    elif choice == "5":
         model_input = input("Enter model path: ").strip()
         if not model_input.endswith(".pth"): model_input += ".pth"
-        test_model(os.path.join(RESULTS_DIR, model_input))
-    elif choice == "4":
-        visual_training_demo(resume=True, use_her=True)
-    elif choice == "5":
-        plot_training_results()
+        rendering = input("Enable visualisation? (y/n): ").strip().lower() == 'y'
+        test_model(os.path.join(RESULTS_DIR, model_input), rendering=rendering)
     elif choice == "6":
-        visual_training_demo(resume=False, use_her=False)
+        plot_training_results()
     elif choice == "7":
         plot_detailed_comparisons()
     elif choice == "8":
