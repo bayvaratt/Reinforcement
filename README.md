@@ -70,6 +70,7 @@ ddpg/          # Contains the DDPG agent, Actor/Critic networks, noise processes
 env/           # Custom ParallelParkingEnv environment wrapper
 experiments/   # Main executable scripts for training and testing
 results/       # Stores trained models (.pth) - Our best trained model is: results/parallel_parking/HIGH_SUCCESS_success_100.0_crash_0.0_20260104_123740.pth
+final_result/  # Record final results, including csv files and graphs used in the report.
 ```
 
 See `results/parallel_parking/MODELS.md` for details on the naming convention of saved models.
