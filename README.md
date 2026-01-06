@@ -61,8 +61,6 @@ python experiments/visual_train_ddpg.py
 7. **Plot Additional Metrics from HER Training Log:** Generate detailed plots from the HER training log.
 8. **Plot final Comparison: Random vs No-HER vs HER** Train 3 agents and generate 3 bar charts comparing success rate, crash rate, and average steps.
 
-
-
 ---
 
 ## 3. Project Structure
@@ -71,7 +69,7 @@ python experiments/visual_train_ddpg.py
 ddpg/          # Contains the DDPG agent, Actor/Critic networks, noise processes
 env/           # Custom ParallelParkingEnv environment wrapper
 experiments/   # Main executable scripts for training and testing
-results/       # Stores trained models (.pth)
+results/       # Stores trained models (.pth) - Our best trained model is: results/parallel_parking/HIGH_SUCCESS_success_100.0_crash_0.0_20260104_123740.pth
 ```
 
 See `results/parallel_parking/MODELS.md` for details on the naming convention of saved models.
